@@ -1,0 +1,36 @@
+# --------------------
+# 1. Entorno Virtual
+# --------------------
+venvfutbol/  # Excluye la carpeta de tu entorno virtual
+
+# --------------------
+# 2. Datos (CRUCIAL)
+# --------------------
+# Excluye la data de simulacion (tracking.jsonl, eventing.xlsx) y la data historica
+data/
+*.csv
+*.xlsx
+*.jsonl
+
+# --------------------
+# 3. Credenciales de Acceso (CRÍTICO DE SEGURIDAD)
+# --------------------
+Credenciales/ # Excluye la carpeta donde guardas la clave JSON de GCP
+*.json
+
+# --------------------
+# 4. Archivos de PySpark/Python
+# --------------------
+__pycache__/
+*.pyc
+*.egg-info/
+.mypy_cache/
+
+# --------------------
+# 5. Archivos de Sistema/OS
+# --------------------
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
