@@ -1,41 +1,40 @@
-# publisher.py (En la Raíz del Proyecto)
+# publisher.py
+# ⚠️ IMPORTANTE: Este script DEBE estar en la raíz de tu proyecto.
 
 import pandas as pd
 import json
 import time
 from google.cloud import pubsub_v1
 import os 
-import sys
 from datetime import datetime
+import sys # <-- Importación necesaria para el fix de PATH
 
 # =========================================================================
-# ⚠️ FIX DE PATH FINAL: Asegura la importación desde TACTIX_LIVE
+# ⚠️ FIX DE PATH: Añadir la raíz del proyecto al PATH de Python
 # =========================================================================
 
-# 1. Añadir el directorio que contiene TACTIX_LIVE al PATH.
-# dirname(__file__) es la raíz del proyecto.
+# 1. Obtener la ruta absoluta de la carpeta donde está este script (la raíz del proyecto)
 project_root = os.path.abspath(os.path.dirname(__file__))
 
-# 2. Agregar la raíz al PATH para que Python pueda encontrar 'TACTIX_LIVE'
+# 2. Añadir esta raíz al sys.path para que Python pueda encontrar la carpeta TACTIX_LIVE
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-# Ahora la importación funciona a través del paquete TACTIX_LIVE
+# 3. Ahora la importación debe funcionar
 try:
-    # La ruta correcta es TACTIX_LIVE.utils.config_loader
+    # La ruta de importación correcta es: TACTIX_LIVE -> utils -> config_loader
     from TACTIX_LIVE.utils.config_loader import load_config
 except ImportError as e:
-    # Si falla, es probable que __init__.py o el nombre del archivo no exista.
     print(f"❌ ERROR CRÍTICO DE IMPORTACIÓN: No se pudo importar el módulo de configuración.")
     print(f"Detalle del Error: {e}")
     print("\nVerificación de la Estructura:")
+    print(f"  - ¿Este script está en la raíz del proyecto?")
     print(f"  - ¿Existe el archivo en: {os.path.join(project_root, 'TACTIX_LIVE', 'utils', 'config_loader.py')}?")
-    print("  - ¿Existe TACTIX_LIVE/__init__.py y TACTIX_LIVE/utils/__init__.py?")
+    print(f"  - ¿Existen los archivos TACTIX_LIVE/__init__.py y TACTIX_LIVE/utils/__init__.py?")
     sys.exit(1)
 
-
 # =========================================================================
-# 1. FUNCIONES DE UTILIDAD
+# 1. FUNCIONES DE UTILIDAD (Conversión, Carga de IDs, Publicación)
 # =========================================================================
 
 def time_to_seconds(time_str: str) -> float | None:
@@ -48,10 +47,9 @@ def time_to_seconds(time_str: str) -> float | None:
     try:
         parts = str(time_str).split(':')
         
-        # El formato esperado es HH:MM:SS.ss (3 partes) o MM:SS.ss (2 partes)
-        if len(parts) == 3:
+        if len(parts) == 3: # Formato HH:MM:SS.ss
             h, m, s = map(float, parts)
-        elif len(parts) == 2:
+        elif len(parts) == 2: # Formato MM:SS.ss
             h = 0.0
             m, s = map(float, parts)
         else:
@@ -68,7 +66,6 @@ def load_ids_map(file_path: str) -> dict:
         with open(file_path, 'r') as f:
             data = json.load(f)
             
-        # Creamos un diccionario de mapeo player_id -> {'team_id', 'team_name', 'player_name'}
         player_map = {}
         for team_data in data.values():
             team_id = team_data.get('team_id')
@@ -117,10 +114,10 @@ except FileNotFoundError as e:
 PROJECT_ID = CONFIG['gcp_project_id']
 TOPIC_TRACKING_ID = CONFIG['pubsub']['topic_tracking']
 TOPIC_EVENTING_ID = CONFIG['pubsub']['topic_eventing']
-IDS_FILE = "data/ids_tracking.json" # Ruta fija del archivo de soporte
+IDS_FILE = "data/ids_tracking.json"
 
 TRACKING_FILE = CONFIG['data_paths']['tracking_file']
-EVENTING_FILE = CONFIG['data_paths']['eventing_file'].replace(".xlsx", ".csv") # CORRECCIÓN: Usamos CSV
+EVENTING_FILE = CONFIG['data_paths']['eventing_file'].replace(".xlsx", ".csv") # Asegura que sea CSV
 
 SPEED_MULTIPLIER = CONFIG.get('simulation_speed_multiplier', 1)
 
@@ -140,33 +137,28 @@ def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     print(f"\nCargando datos desde:\n  - Tracking: {TRACKING_FILE}\n  - Eventing: {EVENTING_FILE}")
 
     try:
-        # Cargar Tracking Data (JSONL)
         tracking_df = pd.read_json(TRACKING_FILE, lines=True)
-        # Cargar Eventing Data (CSV)
         eventing_df = pd.read_csv(EVENTING_FILE)
         
     except FileNotFoundError:
          raise FileNotFoundError(f"Asegúrate de que tus archivos de datos existan en la carpeta 'data/'.")
 
-    # Cargar y preparar el mapa de IDs
     player_id_map = load_ids_map(IDS_FILE)
     
     # ----------------------------------------------------------------------
-    # LIMPIEZA Y CONVERSIÓN DE TRACKING DATA (89k registros)
+    # LIMPIEZA Y CONVERSIÓN DE TRACKING DATA
     # ----------------------------------------------------------------------
     
-    # 1. Aplicar la función de conversión de tiempo a la columna 'timestamp'
+    # 1. Aplicar la función de conversión de tiempo
     tracking_df['game_time_seconds'] = tracking_df['timestamp'].apply(time_to_seconds)
     
     # 2. Filtrar registros nulos/vacíos (el ~15% problemático)
-    # Un registro es "vacío" si el timestamp no se pudo convertir O si no tiene player_data
     tracking_df = tracking_df.dropna(subset=['game_time_seconds', 'player_data'])
     
     # 3. Eliminar la columna de string original
     tracking_df = tracking_df.drop(columns=['timestamp'])
     
-    # 4. Enriquecimiento de jugador (IMPORTANTE para PySpark)
-    # Esto ayuda al worker de PySpark a saber rápidamente a qué equipo pertenece un jugador
+    # 4. Enriquecimiento de jugador (Añade team_id, team_name, etc.)
     def enrich_player_data(players_list):
         if not players_list:
             return players_list
@@ -184,13 +176,13 @@ def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     # VERIFICACIÓN DE EVENTING DATA
     # ----------------------------------------------------------------------
     
-    # La columna de tiempo para Eventing debe existir y ya estar en segundos para ser precisa.
+    # ⚠️ REVISA ESTE NOMBRE DE COLUMNA:
+    # Esta debe ser la columna de tiempo en tu 'eventing_file.csv'
     TIME_COLUMN = 'game_time_seconds' 
     
     if TIME_COLUMN not in eventing_df.columns:
         raise ValueError(f"❌ ERROR: Columna de tiempo '{TIME_COLUMN}' no encontrada en Eventing. Por favor, asegúrate de que exista en tu CSV.")
 
-    # Ordenar por tiempo de juego para garantizar el orden del stream
     tracking_df = tracking_df.sort_values(by=TIME_COLUMN)
     eventing_df = eventing_df.sort_values(by=TIME_COLUMN)
     
@@ -205,7 +197,6 @@ def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
 
 def simulate_match(tracking_df: pd.DataFrame, eventing_df: pd.DataFrame):
     """Simula el partido combinando flujos y publicando mensajes con pausas."""
-    # Código de simulate_match (sin cambios funcionales respecto al anterior, usa las mismas variables)
     
     print("\n==============================================")
     print(f"      ▶️ INICIANDO SIMULACIÓN @ {SPEED_MULTIPLIER}x ◀️     ")
@@ -232,7 +223,7 @@ def simulate_match(tracking_df: pd.DataFrame, eventing_df: pd.DataFrame):
         topic_path = topic_path_tracking if record['source'] == 'tracking' else topic_path_eventing
         data_type = record['source']
             
-        record.pop('source') 
+        record.pop('source')
         publish_message(topic_path, record, data_type)
         
         # 3. Log y Actualización
@@ -248,7 +239,6 @@ def simulate_match(tracking_df: pd.DataFrame, eventing_df: pd.DataFrame):
 
 if __name__ == "__main__":
     try:
-        # ⚠️ Verifica que la columna 'game_time_seconds' exista en tu CSV de eventing.
         tracking_data, eventing_data = load_data()
         simulate_match(tracking_data, eventing_data)
             
