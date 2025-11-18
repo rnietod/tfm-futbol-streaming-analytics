@@ -1,18 +1,36 @@
-# publisher.py
+# publisher.py (En la Raíz del Proyecto)
+
 import pandas as pd
 import json
 import time
 from google.cloud import pubsub_v1
 import os 
-from datetime import datetime
 import sys
+from datetime import datetime
 
-# Importamos la utilidad para cargar la configuración
+# =========================================================================
+# ⚠️ FIX DE PATH FINAL: Asegura la importación desde TACTIX_LIVE
+# =========================================================================
+
+# 1. Añadir el directorio que contiene TACTIX_LIVE al PATH.
+# dirname(__file__) es la raíz del proyecto.
+project_root = os.path.abspath(os.path.dirname(__file__))
+
+# 2. Agregar la raíz al PATH para que Python pueda encontrar 'TACTIX_LIVE'
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
+# Ahora la importación funciona a través del paquete TACTIX_LIVE
 try:
+    # La ruta correcta es TACTIX_LIVE.utils.config_loader
     from TACTIX_LIVE.utils.config_loader import load_config
-except ImportError:
-    print("❌ ERROR: No se puede importar TACTIX_LIVE.utils.config_loader.")
-    print("Asegúrate de que la carpeta TACTIX_LIVE sea un módulo válido.")
+except ImportError as e:
+    # Si falla, es probable que __init__.py o el nombre del archivo no exista.
+    print(f"❌ ERROR CRÍTICO DE IMPORTACIÓN: No se pudo importar el módulo de configuración.")
+    print(f"Detalle del Error: {e}")
+    print("\nVerificación de la Estructura:")
+    print(f"  - ¿Existe el archivo en: {os.path.join(project_root, 'TACTIX_LIVE', 'utils', 'config_loader.py')}?")
+    print("  - ¿Existe TACTIX_LIVE/__init__.py y TACTIX_LIVE/utils/__init__.py?")
     sys.exit(1)
 
 
