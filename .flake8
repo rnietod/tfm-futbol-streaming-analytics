@@ -1,0 +1,11 @@
+[flake8]
+# Ignorar carpetas de entorno virtual, cache y git
+exclude =
+    .git,
+    __pycache__,
+    venvfutbol,
+    .github,
+    data
+
+# Configuración de longitud de línea (compatible con Black/Google style)
+max-line-length = 120
