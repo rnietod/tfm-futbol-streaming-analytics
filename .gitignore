@@ -1,7 +1,8 @@
 # --------------------
 # 1. Entorno Virtual
 # --------------------
-venvfutbol/  # Excluye la carpeta de tu entorno virtual
+venvfutbol/  
+# Excluye la carpeta de tu entorno virtual
 
 # --------------------
 # 2. Datos (CRUCIAL)
