@@ -10,3 +10,4 @@ def test_python_version():
     """Verifica que estamos corriendo en Python 3"""
     import sys
     assert sys.version_info.major == 3
+    
