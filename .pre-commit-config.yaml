@@ -1,0 +1,19 @@
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+    # Este arregla el error W291/W293 (espacios al final de línea)
+    -   id: trailing-whitespace
+    # Este arregla el error W292 (falta de linea vacía al final)
+    -   id: end-of-file-fixer
+    # Este verifica que el archivo sea YAML válido
+    -   id: check-yaml
+    # Este evita que subas archivos gigantes (>500kb) por error
+    -   id: check-added-large-files
+
+-   repo: https://github.com/hhatto/autopep8
+    rev: v2.0.4
+    hooks:
+    # Este arregla el formato de Python automáticamente (PEP8)
+    -   id: autopep8
+        args: ["--in-place", "--aggressive"]

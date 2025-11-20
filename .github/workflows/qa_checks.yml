@@ -1,0 +1,31 @@
+name: CI - QA (Tests)
+
+on:
+  push:
+    branches: [ "qa" ]
+  pull_request:
+    branches: [ "qa" ]
+
+jobs:
+  test-suite:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v3
+      with:
+        python-version: "3.11"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        # Instalar dependencias reales (menos las de windows si se colaron)
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        # Instalar herramientas de test
+        pip install pytest pytest-mock pandas google-cloud-pubsub
+
+    - name: Run Tests
+      run: |
+        # Ejecutar tests ignorando warnings de librerías
+        python -m pytest -v
