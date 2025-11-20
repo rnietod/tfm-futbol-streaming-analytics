@@ -1,10 +1,10 @@
-# simulator/app.py (Versión 4.1 - Completa)
+# simulator/app.py (Versión CI Compliant)
 import streamlit as st
 import pandas as pd
 import time
 import sys
 import os
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 # 1. SETUP
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -32,9 +32,10 @@ def get_latency_html(ms):
     return f'<span class="latency-fail">{ms} ms</span>'
 
 
-# 2. CONFIG UI
+# 2. UI CONFIG
 st.set_page_config(page_title="TACTIX Simulator", page_icon="⚽", layout="wide")
 
+# CSS dividido para cumplir PEP8 (Max line length 120)
 st.markdown("""
 <style>
     .stApp { background-color: #0E1117; }
@@ -42,18 +43,31 @@ st.markdown("""
     .bg-wait { background-color: #FF9100; color: black; }
     .bg-live { background-color: #00C853; }
     .bg-stop { background-color: #D50000; }
-    div[data-testid="stMetric"] { background-color: #1A1A1A; border: 1px solid #333333; border-radius: 6px; padding: 10px; }
+    div[data-testid="stMetric"] {
+        background-color: #1A1A1A;
+        border: 1px solid #333333;
+        border-radius: 6px;
+        padding: 10px;
+    }
     .latency-ok { color: #00FF00; font-weight: bold; }
     .latency-fail { color: #FF4500; font-weight: bold; }
-    div.stButton > button:first-child { font-weight: bold; border-radius: 8px; font-size: 18px; padding: 10px; width: 100%; background-color: #00529F; color: white; }
+    div.stButton > button:first-child {
+        font-weight: bold;
+        border-radius: 8px;
+        font-size: 18px;
+        padding: 10px;
+        width: 100%;
+        background-color: #00529F;
+        color: white;
+    }
     div[data-testid="stDataFrame"] { width: 100%; }
 </style>
 """, unsafe_allow_html=True)
 
+
 # 3. STATE (Self-Healing)
-
-
-def create_engine(): return SimulationEngine(env="dev")
+def create_engine():
+    return SimulationEngine(env="dev")
 
 
 if 'engine' not in st.session_state:
@@ -79,7 +93,10 @@ with c1:
 with c2:
     status = '<span class="status-badge bg-stop">⏹️ OFFLINE</span>'
     if engine.running:
-        status = '<span class="status-badge bg-live">🔴 LIVE MATCH</span>' if engine.current_time >= 0 else '<span class="status-badge bg-wait">⚠️ WAITING KICKOFF</span>'
+        if engine.current_time >= 0:
+            status = '<span class="status-badge bg-live">🔴 LIVE MATCH</span>'
+        else:
+            status = '<span class="status-badge bg-wait">⚠️ WAITING KICKOFF</span>'
     st.markdown(f"### {status}", unsafe_allow_html=True)
 
 st.divider()
@@ -128,11 +145,13 @@ col_summ, col_logs = st.columns([1, 1])
 with col_summ:
     t_count = max(1, engine.metrics['tracking']['count'])
     e_count = max(1, engine.metrics['eventing']['count'])
+    lat_t = engine.metrics['tracking']['total_latency'] / t_count
+    lat_e = engine.metrics['eventing']['total_latency'] / e_count
 
     data = {
         "Fuente": ["Tracking", "Eventing"],
         "Volumen": [engine.metrics['tracking']['count'], engine.metrics['eventing']['count']],
-        "Latencia (ms)": [f"{engine.metrics['tracking']['total_latency']/t_count:.2f}", f"{engine.metrics['eventing']['total_latency']/e_count:.2f}"]
+        "Latencia (ms)": [f"{lat_t:.2f}", f"{lat_e:.2f}"]
     }
     st.dataframe(pd.DataFrame(data), hide_index=True, use_container_width=True)
 
@@ -142,14 +161,14 @@ with col_logs:
 
 st.divider()
 
-# 9. AUDITORÍA DETALLADA (TABLAS REGISTRO A REGISTRO)
+# 9. AUDITORÍA DETALLADA
 st.subheader("📝 Auditoría en Vivo")
 
 tab_track, tab_event = st.tabs(["📡 Tracking Stream (Frames)", "⚽ Eventing Stream (Plays)"])
 
 with tab_track:
     if engine.sent_tracking_log:
-        df_track = pd.DataFrame(engine.sent_tracking_log).iloc[::-1]  # Invertir para ver lo último primero
+        df_track = pd.DataFrame(engine.sent_tracking_log).iloc[::-1]
         st.dataframe(df_track, use_container_width=True, height=300)
     else:
         st.info("Esperando inicio de transmisión...")
