@@ -5,6 +5,7 @@ def test_environment_is_ready():
     """
     assert True is True
 
+
 def test_python_version():
     """Verifica que estamos corriendo en Python 3"""
     import sys
