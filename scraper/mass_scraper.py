@@ -28,7 +28,9 @@ def create_driver():
     chrome_options.add_argument("--disable-dev-shm-usage")  # Crucial para VM
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    )
 
     service = Service(ChromeDriverManager().install())
 
@@ -175,11 +177,11 @@ def run_mass_scraper():
                             # LOAD
                             if bucket:
                                 upload_to_gcs(bucket, data, blob_path)
-                                print(f"      ✅ Guardado en GCS")
+                                print("      ✅ Guardado en GCS")
                             else:
-                                print(f"      ✅ Extraído (Modo Dry-Run)")
+                                print("      ✅ Extraído (Modo Dry-Run)")
                         else:
-                            print(f"      ❌ Falló extracción (No JSON)")
+                            print("      ❌ Falló extracción (No JSON)")
 
                         # Sleep entre partidos (Anti-Ban)
                         time.sleep(random.uniform(2.0, 4.0))
