@@ -7,8 +7,6 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from google.cloud import storage
 
@@ -20,13 +18,15 @@ DATA_ROOT = "data"  # Carpeta donde están los CSVs de los índices
 
 def create_driver():
     chrome_options = Options()
-    # EN LA NUBE ES OBLIGATORIO EL HEADLESS
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--window-size=1920,1080")
+    # Dividimos la linea larga
     chrome_options.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    )
     chrome_options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
 
     service = Service(ChromeDriverManager().install())
@@ -147,9 +147,9 @@ def run_mass_scraper():
 
                         if data:
                             upload_to_gcs(bucket, data, blob_path)
-                            print(f"      ✅ Guardado")
+                            print("      ✅ Guardado")
                         else:
-                            print(f"      ❌ Falló extracción")
+                            print("      ❌ Falló extracción")
 
                         # 💤 SLEEP RANDOM (Anti-Ban)
                         sleep_time = random.uniform(1.5, 3.5)

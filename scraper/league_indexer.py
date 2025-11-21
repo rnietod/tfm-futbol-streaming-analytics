@@ -1,7 +1,7 @@
 import time
 import pandas as pd
 import os
-import sys
+# Borramos 'import sys' que no se usa
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -12,39 +12,62 @@ from selenium.webdriver.support.ui import Select
 from webdriver_manager.chrome import ChromeDriverManager
 
 # --- CONFIGURACIÓN MAESTRA ---
-# Lista de ligas a procesar. El script iterará sobre ellas.
 LEAGUES_CONFIG = [
     {
         "name": "la_liga",
-        "url": "https://www.scoresway.com/en_GB/soccer/primera-divisi%C3%B3n-2025-2026/80zg2v1cuqcfhphn56u4qpyqc/results"
+        "url": (
+            "https://www.scoresway.com/en_GB/soccer/primera-divisi%C3%B3n-2025-2026/"
+            "80zg2v1cuqcfhphn56u4qpyqc/results"
+        )
     },
     {
         "name": "premier_league",
-        "url": "https://www.scoresway.com/en_GB/soccer/premier-league-2025-2026/51r6ph2woavlbbpk8f29nynf8/results"
+        "url": (
+            "https://www.scoresway.com/en_GB/soccer/premier-league-2025-2026/"
+            "51r6ph2woavlbbpk8f29nynf8/results"
+        )
     },
     {
         "name": "ligue_1",
-        "url": "https://www.scoresway.com/en_GB/soccer/ligue-1-2025-2026/dbxs75cag7zyip5re0ppsanmc/results"
+        "url": (
+            "https://www.scoresway.com/en_GB/soccer/ligue-1-2025-2026/"
+            "dbxs75cag7zyip5re0ppsanmc/results"
+        )
     },
     {
         "name": "bundesliga",
-        "url": "https://www.scoresway.com/en_GB/soccer/bundesliga-2025-2026/2bchmrj23l9u42d68ntcekob8/results"
+        "url": (
+            "https://www.scoresway.com/en_GB/soccer/bundesliga-2025-2026/"
+            "2bchmrj23l9u42d68ntcekob8/results"
+        )
     },
     {
         "name": "serie_a",
-        "url": "https://www.scoresway.com/en_GB/soccer/serie-a-2025-2026/emdmtfr1v8rey2qru3xzfwges/results"
+        "url": (
+            "https://www.scoresway.com/en_GB/soccer/serie-a-2025-2026/"
+            "emdmtfr1v8rey2qru3xzfwges/results"
+        )
     },
     {
         "name": "champions_league",
-        "url": "https://www.scoresway.com/en_GB/soccer/uefa-champions-league-2025-2026/2mr0u0l78k2gdsm79q56tb2fo/results"
+        "url": (
+            "https://www.scoresway.com/en_GB/soccer/uefa-champions-league-2025-2026/"
+            "2mr0u0l78k2gdsm79q56tb2fo/results"
+        )
     },
     {
         "name": "liga_argentina",
-        "url": "https://www.scoresway.com/en_GB/soccer/liga-profesional-argentina-2025/3l4bzc8syz1ea2dnv453kp89g/results"
+        "url": (
+            "https://www.scoresway.com/en_GB/soccer/liga-profesional-argentina-2025/"
+            "3l4bzc8syz1ea2dnv453kp89g/results"
+        )
     },
     {
-        "name": "brasileirao",  # Serie A Brasil (Asumido por el link 2025)
-        "url": "https://www.scoresway.com/en_GB/soccer/serie-a-2025/9pqtmpr3w8jm73y0eb8hmum8k/results"
+        "name": "brasileirao",
+        "url": (
+            "https://www.scoresway.com/en_GB/soccer/serie-a-2025/"
+            "9pqtmpr3w8jm73y0eb8hmum8k/results"
+        )
     }
 ]
 
