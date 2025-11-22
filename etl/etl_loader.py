@@ -1,6 +1,4 @@
-import os
 import json
-import time
 from datetime import datetime
 from google.cloud import storage
 from google.cloud import bigquery
