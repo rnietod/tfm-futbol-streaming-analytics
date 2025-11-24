@@ -1,4 +1,5 @@
 import json
+import hashlib
 from datetime import datetime
 from google.cloud import storage
 from google.cloud import bigquery
@@ -9,12 +10,35 @@ BUCKET_NAME = "tfm-datalake-raw-futbol"
 DATASET_ID = "staging_football"
 TABLE_ID = "raw_events_native"
 
-# --- CONFIGURACIÓN DE PRODUCCIÓN ---
-BATCH_SIZE = 1000  # Lotes grandes para velocidad en Cloud
+# --- TUNING DE RENDIMIENTO ---
+BATCH_SIZE = 50
+
+
+def generate_id(file_name):
+    """Crea un ID único (Hash MD5) a partir del nombre del archivo."""
+    # Usamos MD5 porque es rápido y determinista (mismo nombre = mismo ID siempre)
+    return hashlib.md5(file_name.encode('utf-8')).hexdigest()
+
+
+def get_existing_ids(bq_client, table_ref):
+    """Descarga los IDs que ya existen en BigQuery para evitar duplicados."""
+    print("🔍 Consultando IDs existentes en BigQuery (Deduplicación)...")
+    try:
+        # Solo traemos la columna ID para que sea rápido y barato
+        query = f"SELECT id FROM `{table_ref}`"
+        query_job = bq_client.query(query)
+
+        # Guardamos en un SET para búsqueda instantánea
+        existing = set(row.id for row in query_job)
+        print(f"   ✅ Se encontraron {len(existing)} archivos ya cargados.")
+        return existing
+    except Exception as e:
+        print("   ℹ️ Tabla no existe o está vacía. Se cargará todo.")
+        return set()
 
 
 def run_etl():
-    print(f"🚀 Iniciando ETL Masivo: gs://{BUCKET_NAME} -> {DATASET_ID}.{TABLE_ID}")
+    print("🚀 Iniciando ETL V2.0 (Smart & Safe)")
 
     # 1. Clientes
     try:
@@ -25,9 +49,10 @@ def run_etl():
         print(f"❌ Error conectando a GCP: {e}")
         return
 
-    # 2. Tabla BigQuery
+    # 2. Definir Tabla (Esquema Actualizado con ID)
     table_ref = f"{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}"
     schema = [
+        bigquery.SchemaField("id", "STRING", mode="REQUIRED", description="PK: Hash del filename"),
         bigquery.SchemaField("ingested_at", "TIMESTAMP", mode="REQUIRED"),
         bigquery.SchemaField("file_name", "STRING", mode="REQUIRED"),
         bigquery.SchemaField("league", "STRING", mode="NULLABLE"),
@@ -42,42 +67,47 @@ def run_etl():
             field="ingested_at"
         )
         bq_client.create_table(table, exists_ok=True)
-        print("✅ Tabla destino verificada.")
+        print(f"✅ Tabla destino lista: {TABLE_ID}")
     except Exception as e:
         print(f"❌ Error tabla BQ: {e}")
         return
 
-    # 3. Procesamiento
-    print("📦 Escaneando bucket (esto puede tardar si hay miles de archivos)...")
+    # 3. Cargar caché de duplicados
+    existing_ids = get_existing_ids(bq_client, table_ref)
+
+    # 4. Escaneo y Proceso
+    print("📦 Listando archivos del Bucket...")
     blobs = bucket.list_blobs(prefix="eventing/")
 
     rows_buffer = []
-    total_processed = 0
-    total_errors = 0
-    count = 0
-
-    print("⚡ Comenzando carga...")
+    count_new = 0
+    count_skipped = 0
 
     for blob in blobs:
         if not blob.name.endswith(".json"):
             continue
 
-        count += 1
-        # Log ligero cada 100 archivos para no saturar la terminal
-        if count % 100 == 0:
-            print(f"   ...escaneando archivo #{count} ({blob.name})")
+        # Generar ID
+        file_id = generate_id(blob.name)
+
+        # --- FILTRO DE DUPLICADOS ---
+        if file_id in existing_ids:
+            count_skipped += 1
+            if count_skipped % 500 == 0:
+                print(f"   ⏩ Saltados {count_skipped} archivos (Ya existen)...")
+            continue
 
         try:
-            # Metadatos del path: eventing/liga/temporada/id.json
+            # Procesar nuevo archivo
             parts = blob.name.split('/')
             league = parts[1] if len(parts) >= 3 else "unknown"
             season = parts[2] if len(parts) >= 3 else "unknown"
 
-            # Descarga y Limpieza
             json_content = blob.download_as_text()
             json_obj = json.loads(json_content)
 
             row = {
+                "id": file_id,
                 "ingested_at": datetime.utcnow().isoformat(),
                 "file_name": blob.name,
                 "league": league,
@@ -87,34 +117,38 @@ def run_etl():
 
             rows_buffer.append(row)
 
-            # Insertar Lote
+            # --- INSERTAR LOTE (BATCH) ---
             if len(rows_buffer) >= BATCH_SIZE:
+                print(f"   📤 Enviando lote de {len(rows_buffer)} registros...")
                 errors = bq_client.insert_rows_json(table_ref, rows_buffer)
-                if errors:
-                    print(f"      ⚠️ Error BQ: {errors}")
-                    total_errors += len(rows_buffer)
-                else:
-                    total_processed += len(rows_buffer)
-                    print(f"   ✅ Lote guardado. Total: {total_processed}")
 
-                rows_buffer = []  # Limpiar
+                if not errors:
+                    count_new += len(rows_buffer)
+                    print(f"      ✅ Guardado. Total nuevos: {count_new}")
+                    # Agregamos los nuevos IDs a la memoria local para no repetir en esta misma corrida
+                    for r in rows_buffer:
+                        existing_ids.add(r['id'])
+                else:
+                    print(f"      ⚠️ Error insertando lote: {errors}")
+
+                rows_buffer = []  # Vaciar buffer
 
         except Exception as e:
-            print(f"      ❌ Error con archivo {blob.name}: {e}")
-            total_errors += 1
+            print(f"   ❌ Error leyendo {blob.name}: {e}")
             continue
 
-    # Insertar remanente
+    # Insertar remanente final
     if rows_buffer:
+        print(f"   📤 Enviando lote final ({len(rows_buffer)})...")
         errors = bq_client.insert_rows_json(table_ref, rows_buffer)
         if not errors:
-            total_processed += len(rows_buffer)
-            print("   ✅ Lote final guardado.")
+            count_new += len(rows_buffer)
+            print("      ✅ Final guardado.")
 
     print("\n" + "=" * 30)
-    print("🏁 ETL FINALIZADO")
-    print(f"📊 Total Insertados: {total_processed}")
-    print(f"🐛 Total Errores: {total_errors}")
+    print("🏁 ETL TERMINADO")
+    print(f"📥 Nuevos Insertados: {count_new}")
+    print(f"⏩ Duplicados Saltados: {count_skipped}")
     print("=" * 30)
 
 
