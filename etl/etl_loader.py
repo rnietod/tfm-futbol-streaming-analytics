@@ -1,3 +1,4 @@
+import os
 import json
 import hashlib
 from datetime import datetime
@@ -10,13 +11,14 @@ BUCKET_NAME = "tfm-datalake-raw-futbol"
 DATASET_ID = "staging_football"
 TABLE_ID = "raw_events_native"
 
-# --- TUNING DE RENDIMIENTO ---
+# --- CONFIGURACIÓN DE EJECUCIÓN ---
 BATCH_SIZE = 50
+TEST_MODE = True
+MAX_FILES_TEST = 10
 
 
 def generate_id(file_name):
     """Crea un ID único (Hash MD5) a partir del nombre del archivo."""
-    # Usamos MD5 porque es rápido y determinista (mismo nombre = mismo ID siempre)
     return hashlib.md5(file_name.encode('utf-8')).hexdigest()
 
 
@@ -24,15 +26,14 @@ def get_existing_ids(bq_client, table_ref):
     """Descarga los IDs que ya existen en BigQuery para evitar duplicados."""
     print("🔍 Consultando IDs existentes en BigQuery (Deduplicación)...")
     try:
-        # Solo traemos la columna ID para que sea rápido y barato
         query = f"SELECT id FROM `{table_ref}`"
         query_job = bq_client.query(query)
-
-        # Guardamos en un SET para búsqueda instantánea
         existing = set(row.id for row in query_job)
         print(f"   ✅ Se encontraron {len(existing)} archivos ya cargados.")
         return existing
-    except Exception as e:
+    except Exception:
+        # Si falla (tabla no existe), asumimos vacío.
+        # Quitamos 'as e' porque aquí no es crítico imprimir el error exacto
         print("   ℹ️ Tabla no existe o está vacía. Se cargará todo.")
         return set()
 
@@ -49,10 +50,10 @@ def run_etl():
         print(f"❌ Error conectando a GCP: {e}")
         return
 
-    # 2. Definir Tabla (Esquema Actualizado con ID)
+    # 2. Definir Tabla
     table_ref = f"{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}"
     schema = [
-        bigquery.SchemaField("id", "STRING", mode="REQUIRED", description="PK: Hash del filename"),
+        bigquery.SchemaField("id", "STRING", mode="REQUIRED"),
         bigquery.SchemaField("ingested_at", "TIMESTAMP", mode="REQUIRED"),
         bigquery.SchemaField("file_name", "STRING", mode="REQUIRED"),
         bigquery.SchemaField("league", "STRING", mode="NULLABLE"),
@@ -100,8 +101,12 @@ def run_etl():
         try:
             # Procesar nuevo archivo
             parts = blob.name.split('/')
-            league = parts[1] if len(parts) >= 3 else "unknown"
-            season = parts[2] if len(parts) >= 3 else "unknown"
+            if len(parts) >= 3:
+                league = parts[1]
+                season = parts[2]
+            else:
+                league = "unknown"
+                season = "unknown"
 
             json_content = blob.download_as_text()
             json_obj = json.loads(json_content)
@@ -125,7 +130,6 @@ def run_etl():
                 if not errors:
                     count_new += len(rows_buffer)
                     print(f"      ✅ Guardado. Total nuevos: {count_new}")
-                    # Agregamos los nuevos IDs a la memoria local para no repetir en esta misma corrida
                     for r in rows_buffer:
                         existing_ids.add(r['id'])
                 else:
