@@ -35,3 +35,9 @@ __pycache__/
 
 # Windows
 Thumbs.db
+
+# --------------------
+# 6. BigQuery
+# --------------------
+# macOS
+node_modules/
