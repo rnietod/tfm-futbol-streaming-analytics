@@ -11,9 +11,9 @@ DATASET_ID = "staging_football"
 TABLE_ID = "raw_events_native"
 
 # --- CONFIGURACIÓN DE EJECUCIÓN ---
-BATCH_SIZE = 50
+BATCH_SIZE = 5
 TEST_MODE = True
-MAX_FILES_TEST = 10
+MAX_FILES_TEST = 1
 
 
 def generate_id(file_name):
