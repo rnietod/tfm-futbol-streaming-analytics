@@ -1,0 +1,49 @@
+config {
+  type: "view"
+  , schema: "staging_football"
+  , description: "tabla base de eventos aplanados. contiene la accion principal, tiempo y actor."
+  , tags: ["staging"]
+}
+
+with
+
+final as (
+    select
+        -- metadatos
+        raw_events.file_name
+        , raw_events.league
+        , raw_events.season
+        , raw_events.ingested_at
+
+        -- identificadores
+        , json_value(raw_events.payload.matchInfo.id) as match_id
+        , json_value(match_event.id) as event_id
+        , cast(json_value(match_event.eventId) as int64) as event_index_in_match
+        
+        -- tiempo
+        , cast(json_value(match_event.periodId) as int64) as period_id
+        , cast(json_value(match_event.timeMin) as int64) as minute
+        , cast(json_value(match_event.timeSec) as int64) as second
+        , timestamp(json_value(match_event.timeStamp)) as event_timestamp
+
+        -- tipologia
+        , cast(json_value(match_event.typeId) as int64) as type_id
+        , cast(json_value(match_event.outcome) as int64) as outcome
+
+        -- posicion
+        , cast(json_value(match_event.x) as float64) as location_x
+        , cast(json_value(match_event.y) as float64) as location_y
+
+        -- actores
+        , json_value(match_event.contestantId) as team_id
+        , json_value(match_event.playerId) as player_id
+        , json_value(match_event.playerName) as player_name
+
+        -- flags directos del json (no qualifiers)
+        , coalesce(cast(json_value(match_event.keyPass) as int64), 0) = 1 as is_key_pass
+        , coalesce(cast(json_value(match_event.assist) as int64), 0) = 1 as is_assist
+    from 
+        `tfm-master-futbol.staging_football.raw_events_native` as raw_events
+        , unnest(json_query_array(raw_events.payload.liveData.event)) as match_event)
+
+select * from final

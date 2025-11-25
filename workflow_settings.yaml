@@ -1,4 +1,4 @@
 defaultProject: tfm-master-futbol
-defaultDataset: dataform
+defaultLocation: europe-southwest1
+defaultDataset: staging_football
 defaultAssertionDataset: dataform_assertions
-dataformCoreVersion: 3.0.35
