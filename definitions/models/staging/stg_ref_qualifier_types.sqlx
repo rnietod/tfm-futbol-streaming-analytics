@@ -1,0 +1,19 @@
+config {
+  type: "view",
+  schema: "staging_football",
+  description: "Diccionario de tipos de calificadores (Pierna derecha, Cabezazo...) estandarizado",
+  tags: ["staging"]
+}
+
+with
+
+final as (
+    select
+        cast(qualifier_Type_Id as int64) as qualifier_type_id
+        , qualifier_Type_Name as qualifier_type_name
+        , Definition as qualifier_definition
+    from
+        `tfm-master-futbol.staging_football.ref_qualifier_types`
+)
+
+select * from final

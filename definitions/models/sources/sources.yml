@@ -1,0 +1,16 @@
+version: 2
+
+sources:
+  - name: raw_events_native
+    description: "Tabla cruda con JSONs de eventos ingestados desde GCS."
+    columns:
+      - name: id
+        description: "Hash MD5 único del archivo."
+      - name: payload
+        description: "Objeto JSON completo del partido (matchInfo + liveData)."
+
+  - name: ref_event_types
+    description: "Diccionario de Tipos de Evento (Opta)."
+    
+  - name: ref_qualifier_types
+    description: "Diccionario de Calificadores (Opta) para detalles de eventos."

@@ -1,0 +1,19 @@
+config {
+  type: "view"
+  , schema: "staging_football"
+  , description: "catalogo estandarizado de tipos de evento"
+  , tags: ["staging"]
+}
+
+with
+
+final as (
+    select
+        event_type_id
+        , event_type_name
+        , description as event_description
+    from
+        `tfm-master-futbol.staging_football.ref_event_types`
+)
+
+select * from final

@@ -1,0 +1,54 @@
+version: 2
+
+models:
+  - name: stg_events
+    description: "Tabla transaccional principal. Contiene una fila por cada evento del partido (Pases, Tiros, Faltas, etc.) con sus metadatos base, actores y coordenadas."
+    columns:
+      - name: match_id
+        description: "Identificador único del partido (Opta ID)."
+      - name: event_id
+        description: "Clave Primaria (PK). Identificador único del evento."
+      - name: type_id
+        description: "Clave Foránea (FK). ID numérico del tipo de evento. Cruzar con stg_ref_event_types para obtener el nombre."
+      - name: period_id
+        description: "ID del periodo del partido (1=1ra Parte, 2=2da Parte, 14=Post-Partido, 16=Pre-Partido)."
+      - name: minute
+        description: "Minuto de juego en el que ocurrió el evento."
+      - name: second
+        description: "Segundo de juego en el que ocurrió el evento."
+      - name: location_x
+        description: "Coordenada X de inicio de la acción (0-100)."
+      - name: location_y
+        description: "Coordenada Y de inicio de la acción (0-100)."
+      - name: player_id
+        description: "ID del jugador que realizó la acción."
+      - name: team_id
+        description: "ID del equipo al que pertenece el jugador."
+      - name: outcome
+        description: "Resultado de la acción: 1 = Exitosa, 0 = Fallida."
+
+  - name: stg_event_qualifiers
+    description: "Tabla vertical de detalles (EAV). Contiene los atributos específicos de cada evento (ej. Pie usado, Zona, Ángulo) desnormalizados."
+    columns:
+      - name: event_id
+        description: "Clave Foránea (FK). Relación con la tabla stg_events."
+      - name: qualifier_type_id
+        description: "Clave Foránea (FK). ID del tipo de detalle. Cruzar con stg_ref_qualifier_types."
+      - name: qualifier_value
+        description: "Valor del calificador (puede ser numérico, texto o coordenadas)."
+
+  - name: stg_ref_event_types
+    description: "Catálogo maestro de tipos de eventos (Seed). Traduce IDs numéricos a nombres legibles."
+    columns:
+      - name: event_type_id
+        description: "PK. ID numérico del evento."
+      - name: event_type_name
+        description: "Nombre legible del evento (ej. Pass, Save, Foul)."
+
+  - name: stg_ref_qualifier_types
+    description: "Catálogo maestro de tipos de calificadores (Seed)."
+    columns:
+      - name: qualifier_type_id
+        description: "PK. ID numérico del calificador."
+      - name: qualifier_type_name
+        description: "Nombre legible (ej. Angle, Length, Body Part)."
