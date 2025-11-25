@@ -1,0 +1,4 @@
+defaultProject: tfm-master-futbol
+defaultLocation: europe-southwest1
+defaultDataset: staging_football
+defaultAssertionDataset: dataform_assertions
