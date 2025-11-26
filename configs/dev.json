@@ -1,0 +1,18 @@
+{
+    "environment": "DEV",
+    "gcp_project_id": "tfm-master-futbol",
+    "pubsub": {
+        "topic_tracking": "tracking-data-topic",
+        "topic_eventing": "eventing-data-topic"
+    },
+    "cloudsql": {
+        "instance_connection_name": "tfm-master-futbol:europe-southwest1:tfm-futbol-db",
+        "db_user": "postgres",
+        "db_pass": "admin123",
+        "db_name": "tactix_db"
+    },
+    "data_paths": {
+        "tracking": "data/tracking_file.jsonl",
+        "eventing": "data/eventing_file.csv"
+    }
+}
