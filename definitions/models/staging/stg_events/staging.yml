@@ -1,0 +1,119 @@
+version: 2
+
+models:
+  # ----------------------------------------------------------------------------
+  # TABLA DE EVENTOS (Principal)
+  # ----------------------------------------------------------------------------
+  - name: stg_events
+    description: >
+      Tabla transaccional base de la capa Staging. Contiene una fila por cada evento 
+      registrado en los partidos (Pases, Tiros, Faltas, etc.).
+      Se ha aplanado desde el JSON original (`raw_events_native`) extrayendo los campos 
+      comunes y metadatos del partido.
+    columns:
+      # Metadatos de Ingesta
+      - name: file_name
+        description: "Nombre del archivo JSON origen en Google Cloud Storage."
+      - name: league
+        description: "Nombre de la liga (extraído de la ruta del archivo)."
+      - name: season
+        description: "Temporada del partido (ej. 2023-2024)."
+      - name: ingested_at
+        description: "Timestamp UTC de cuando el archivo fue cargado a BigQuery."
+
+      # Identificadores
+      - name: match_id
+        description: "Identificador único del partido (Opta Match ID)."
+      - name: event_id
+        description: "Clave Primaria (PK). Identificador único global del evento."
+      - name: event_index_in_match
+        description: "ID secuencial del evento dentro del partido (1, 2, 3...)."
+
+      # Contexto del Partido
+      - name: match_description
+        description: "Descripción legible del partido (ej. 'Real Madrid vs Barcelona')."
+      - name: match_date
+        description: "Fecha local del partido (YYYY-MM-DD)."
+      - name: competition_id
+        description: "ID de la competición (Opta Competition ID)."
+      - name: competition_name
+        description: "Nombre de la competición (ej. 'La Liga', 'Premier League')."
+
+      # Tiempo y Estado
+      - name: period_id
+        description: "ID del periodo de juego (1=1ra Parte, 2=2da Parte, 3=Prórroga 1, 4=Prórroga 2, 5=Penaltis)."
+      - name: minute
+        description: "Minuto de juego en el que ocurrió el evento."
+      - name: second
+        description: "Segundo de juego en el que ocurrió el evento."
+      - name: event_timestamp
+        description: "Timestamp exacto (con milisegundos) del momento de la acción."
+      - name: outcome
+        description: "Resultado binario de la acción: 1 = Exitosa, 0 = Fallida."
+
+      # Tipología
+      - name: type_id
+        description: "Clave Foránea (FK). ID numérico del tipo de evento. Cruzar con 'stg_ref_event_types' para obtener el nombre (ej. 1=Pase, 16=Gol)."
+
+      # Coordenadas
+      - name: location_x
+        description: "Coordenada X de inicio de la acción (0-100). 0 es la portería propia, 100 la rival."
+      - name: location_y
+        description: "Coordenada Y de inicio de la acción (0-100). 0 es la banda derecha, 100 la izquierda."
+
+      # Actores
+      - name: team_id
+        description: "ID del equipo que realizó la acción."
+      - name: player_id
+        description: "ID del jugador que realizó la acción (puede ser nulo en eventos de equipo)."
+      - name: player_name
+        description: "Nombre del jugador que realizó la acción."
+
+      # Flags Especiales
+      - name: is_key_pass
+        description: "Indicador (BOOLEAN). Verdadero si el pase generó una ocasión de gol."
+      - name: is_assist
+        description: "Indicador (BOOLEAN). Verdadero si la acción fue una asistencia de gol."
+
+  # ----------------------------------------------------------------------------
+  # TABLA DE QUALIFIERS (Detalles Verticales)
+  # ----------------------------------------------------------------------------
+  - name: stg_event_qualifiers
+    description: >
+      Tabla vertical de detalles (EAV - Entity Attribute Value). Contiene los atributos 
+      específicos y variables de cada evento que no caben en la tabla principal 
+      (ej. Ángulo del pase, Parte del cuerpo, Zona del campo).
+    columns:
+      - name: match_id
+        description: "Clave Foránea (FK). Relación con el partido."
+      - name: event_id
+        description: "Clave Foránea (FK). Relación con la tabla 'stg_events'."
+      - name: qualifier_instance_id
+        description: "ID único de esta instancia de qualifier."
+      - name: qualifier_type_id
+        description: "Clave Foránea (FK). ID del tipo de detalle. Cruzar con 'stg_ref_qualifier_types' (ej. 140=Pass End X, 213=Angle)."
+      - name: qualifier_value
+        description: "Valor del calificador. Puede ser numérico (coordenada, ángulo) o categórico (ID de zona)."
+
+  # ----------------------------------------------------------------------------
+  # DICCIONARIOS (Reference Tables)
+  # ----------------------------------------------------------------------------
+  - name: stg_ref_event_types
+    description: "Catálogo maestro de tipos de eventos (Seed). Traduce los IDs numéricos de Opta a nombres legibles."
+    columns:
+      - name: event_type_id
+        description: "PK. ID numérico del tipo de evento."
+      - name: event_type_name
+        description: "Nombre técnico del evento (ej. Pass, Miss, Save)."
+      - name: event_description
+        description: "Descripción detallada de qué constituye este evento."
+
+  - name: stg_ref_qualifier_types
+    description: "Catálogo maestro de tipos de calificadores (Seed)."
+    columns:
+      - name: qualifier_type_id
+        description: "PK. ID numérico del tipo de calificador."
+      - name: qualifier_type_name
+        description: "Nombre técnico del calificador (ej. Length, Angle, Head)."
+      - name: qualifier_definition
+        description: "Definición de qué representa este valor."

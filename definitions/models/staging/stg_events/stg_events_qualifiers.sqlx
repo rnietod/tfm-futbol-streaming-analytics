@@ -1,0 +1,28 @@
+config {
+  type: "view"
+  , schema: "staging_football"
+  , description: "tabla vertical de detalles (qualifiers)"
+  , tags: ["staging"]
+}
+
+with
+
+  source as (
+    select
+      -- llaves de cruce
+      json_value(raw_events.payload.matchInfo.id) as match_id
+      , json_value(match_event.id) as event_id
+      , raw_events.file_name
+
+      -- datos del qualifier
+      , json_value(qualifier.id) as qualifier_instance_id
+      , cast(json_value(qualifier.qualifierId) as int64) as qualifier_type_id
+      , json_value(qualifier.value) as qualifier_value
+
+    from
+      `tfm-master-futbol.staging_football.raw_events_native` as raw_events
+      , unnest(json_query_array(raw_events.payload.liveData.event)) as match_event
+      , unnest(json_query_array(match_event.qualifier)) as qualifier
+  )
+
+select * from source

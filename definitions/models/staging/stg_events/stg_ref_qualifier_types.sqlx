@@ -1,0 +1,19 @@
+config {
+  type: "view"
+  , schema: "staging_football"
+  , description: "diccionario de tipos de qualifiers"
+  , tags: ["staging"]
+}
+
+with
+
+  source as (
+    select
+      cast(qualifierTypeId as int64) as qualifier_type_id
+      , qualifierTypeName as qualifier_type_name
+      , Definition as qualifier_definition
+    from
+      `tfm-master-futbol.staging_football.ref_qualifier_types`
+  )
+
+select * from source
