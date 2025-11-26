@@ -9,9 +9,9 @@ with
 
   source as (
     select
-      cast(eventTypeId as int64) as event_type_id
-      , eventTypeName as event_type_name
-      , Description as event_description
+      cast(event_type_id as int64) as event_type_id
+      , event_type_name
+      , description as event_description
     from
       `tfm-master-futbol.staging_football.ref_event_types`
   )
