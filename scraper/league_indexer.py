@@ -68,6 +68,76 @@ LEAGUES_CONFIG = [
             "https://www.scoresway.com/en_GB/soccer/serie-a-2025/"
             "9pqtmpr3w8jm73y0eb8hmum8k/results"
         )
+    },
+    {
+        "name": "efl_championship",
+        "url": (
+            "https://www.scoresway.com/en_GB/soccer/championship-2025-2026/"
+            "bmmk637l2a33h90zlu36kx8no/results"
+        )
+    },
+    {
+        "name": "primeira_liga_portugal",
+        "url": (
+            "https://www.scoresway.com/en_GB/soccer/primeira-liga-2025-2026/"
+            "7l4z25o4hc0fmj9rdspcisdn8/results"
+        )
+    },
+    {
+        "name": "eredivisie",
+        "url": (
+            "https://www.scoresway.com/en_GB/soccer/eredivisie-2025-2026/"
+            "aouykkl1rt7zo06sg0kbzkbh0/results"
+        )
+    },
+    {
+        "name": "segunda_division_es",
+        "url": (
+            "https://www.scoresway.com/en_GB/soccer/segunda-divisi%C3%B3n-2025-2026/"
+            "dko0hzifl1xv9c51s3ai017v8/results"
+        )
+    },
+    {
+        "name": "super_lig_turkey",
+        "url": (
+            "https://www.scoresway.com/en_GB/soccer/s%C3%BCper-lig-2025-2026/"
+            "97zghcaoec1isvvdkh9ud50d0/results"
+        )
+    },
+    {
+        "name": "bundesliga_austria",
+        "url": (
+            "https://www.scoresway.com/en_GB/soccer/bundesliga-2025-2026/"
+            "4jr49qim3gv5bjx3wjkf6n0us/results"
+        )
+    },
+    {
+        "name": "superliga_dinamarca",
+        "url": (
+            "https://www.scoresway.com/en_GB/soccer/superliga-2025-2026/"
+            "3o8l1yf2irp018eaa2far455g/results"
+        )
+    },
+    {
+        "name": "liga_uruguay",
+        "url": (
+            "https://www.scoresway.com/en_GB/soccer/liga-auf-2025/"
+            "1sy3nz08f7za3zwe6pvfdm710/results"
+        )
+    },
+    {
+        "name": "europa_league",
+        "url": (
+            "https://www.scoresway.com/en_GB/soccer/uefa-europa-league-2025-2026/"
+            "7ttpe5jzya3vjhjadiemjy7mc/results"
+        )
+    },
+    {
+        "name": "copa_libertadores",
+        "url": (
+            "https://www.scoresway.com/en_GB/soccer/conmebol-libertadores-2025/"
+            "168tc8nsaknvru654r6qwupsk/results"
+        )
     }
 ]
 
