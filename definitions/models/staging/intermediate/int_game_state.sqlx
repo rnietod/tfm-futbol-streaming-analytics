@@ -1,0 +1,57 @@
+config {
+  type: "view",
+  schema: "intermediate_football",
+  tags: ["intermediate"]
+}
+
+with
+
+  events as (
+    select 
+      match_id
+      , event_id
+      , event_index_in_match
+      , team_id
+      , period_id
+      , minute
+      , second
+      -- Detectar si es gol (y no es anulado)
+      , case when type_id = 16 and outcome = 1 then 1 else 0 end as is_goal
+    from ${ref("stg_events")}
+  )
+
+  -- Calcular marcador acumulado
+  , score_running as (
+    select
+      *
+      -- Goles acumulados por equipo hasta este evento
+      , sum(is_goal) over (partition by match_id, team_id order by event_index_in_match rows between unbounded preceding and current row) as team_score
+      
+      -- Goles totales del partido hasta este evento
+      , sum(is_goal) over (partition by match_id order by event_index_in_match rows between unbounded preceding and current row) as match_total_score
+    from events
+  )
+
+  -- Determinar estado (Ganando/Perdiendo)
+  , game_state as (
+    select
+      *
+      -- Goles del rival = Total Goles - Mis Goles
+      , (match_total_score - team_score) as opponent_score
+      
+      , case
+          when team_score > (match_total_score - team_score) then 'Winning'
+          when team_score < (match_total_score - team_score) then 'Losing'
+          else 'Drawing'
+        end as game_state_label
+        
+    from score_running
+  )
+
+select 
+  match_id, 
+  event_id, 
+  team_score, 
+  opponent_score, 
+  game_state_label 
+from game_state
