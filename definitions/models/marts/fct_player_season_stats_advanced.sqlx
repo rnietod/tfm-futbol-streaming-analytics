@@ -13,19 +13,19 @@ with
   -- 1. Base de Eventos
   base_events as (
     select 
-      fct_events_enriched.match_id
-      , fct_events_enriched.season
-      , fct_events_enriched.league
-      , fct_events_enriched.team_id
-      , fct_events_enriched.player_id
-      , fct_events_enriched.player_name
-      , fct_events_enriched.type_id
-      , fct_events_enriched.outcome
-      , fct_events_enriched.is_key_pass
-      , fct_events_enriched.is_assist
-      , fct_events_enriched.game_state_label
+      match_id
+      , season
+      , league
+      , team_id
+      , player_id
+      , player_name
+      , type_id
+      , outcome
+      , is_key_pass
+      , is_assist
+      , game_state_label
     from ${ref("fct_events_enriched")}
-    where fct_events_enriched.period_id in (1, 2)
+    where period_id in (1, 2)
   )
 
   -- 2. Totales por EQUIPO, Temporada y Game State

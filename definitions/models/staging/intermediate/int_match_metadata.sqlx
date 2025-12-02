@@ -9,13 +9,13 @@ with
 
   source as (
     select
-      stg_events.match_id
-      , max(stg_events.minute) as max_min
-      , min(stg_events.minute) as min_min
+      events.match_id
+      , max(events.minute) as max_min
+      , min(events.minute) as min_min
     from
-      ${ref("stg_events")}
+      ${ref("stg_events")} as events
     group by
-      stg_events.match_id
+      events.match_id
   )
 
   , final as (

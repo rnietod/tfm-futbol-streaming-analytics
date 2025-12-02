@@ -2,12 +2,16 @@ version: 2
 
 models:
   - name: int_game_state
-    description: "Lógica intermedia para calcular el marcador en tiempo real."
+    description: "Lógica intermedia para calcular el marcador en tiempo real. Asigna a cada evento el estado del partido (Ganando, Perdiendo, Empatando) en ese instante exacto."
     columns:
       - name: match_id
-        description: "FK. ID del partido."
+        description: "FK. Identificador único del partido."
       - name: event_id
-        description: "PK. ID del evento."
+        description: "PK. Identificador único del evento."
+      - name: current_team_score
+        description: "Goles acumulados por el equipo que realiza la acción hasta ese momento."
+      - name: current_opponent_score
+        description: "Goles acumulados por el equipo rival hasta ese momento."
       - name: game_state_label
         description: "Estado del marcador desde la perspectiva del equipo que realiza el evento: 'Winning', 'Losing', 'Drawing'."
 

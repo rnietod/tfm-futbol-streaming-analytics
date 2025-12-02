@@ -12,39 +12,39 @@ with
 
   match_stats as (
     select
-      fct_events_enriched.match_id
-      , fct_events_enriched.player_id
-      , fct_events_enriched.player_name
-      , fct_events_enriched.season
-      , fct_events_enriched.league
-      , any_value(fct_events_enriched.team_id) as team_id
+      match_id
+      , player_id
+      , player_name
+      , season
+      , league
+      , any_value(team_id) as team_id
       
       -- Métricas de Volumen
-      , countif(fct_events_enriched.type_id = 16) as goals
-      , countif(fct_events_enriched.type_id in (13, 14, 15, 16)) as total_shots
-      , countif(fct_events_enriched.is_big_chance) as big_chances
-      , countif(fct_events_enriched.type_id = 1 and fct_events_enriched.is_key_pass) as key_passes
-      , countif(fct_events_enriched.type_id = 1 and fct_events_enriched.is_assist) as assists
-      , countif(fct_events_enriched.type_id = 1) as total_passes
-      , countif(fct_events_enriched.type_id = 1 and fct_events_enriched.outcome = 1) as successful_passes
-      , countif(fct_events_enriched.type_id = 3 and fct_events_enriched.outcome = 1) as successful_dribbles
-      , countif(fct_events_enriched.is_cross) as crosses
-      , countif(fct_events_enriched.type_id = 49) as ball_recoveries
-      , countif(fct_events_enriched.type_id = 7 and fct_events_enriched.outcome = 1) as tackles_won
-      , countif(fct_events_enriched.type_id = 8) as interceptions
+      , countif(type_id = 16) as goals
+      , countif(type_id in (13, 14, 15, 16)) as total_shots
+      , countif(is_big_chance) as big_chances
+      , countif(type_id = 1 and is_key_pass) as key_passes
+      , countif(type_id = 1 and is_assist) as assists
+      , countif(type_id = 1) as total_passes
+      , countif(type_id = 1 and outcome = 1) as successful_passes
+      , countif(type_id = 3 and outcome = 1) as successful_dribbles
+      , countif(is_cross) as crosses
+      , countif(type_id = 49) as ball_recoveries
+      , countif(type_id = 7 and outcome = 1) as tackles_won
+      , countif(type_id = 8) as interceptions
       , count(*) as total_actions
 
     from
       ${ref("fct_events_enriched")}
     where
-      fct_events_enriched.player_id is not null
-      and fct_events_enriched.period_id in (1, 2)
+      player_id is not null
+      and period_id in (1, 2)
     group by
-      fct_events_enriched.match_id
-      , fct_events_enriched.player_id
-      , fct_events_enriched.player_name
-      , fct_events_enriched.season
-      , fct_events_enriched.league
+      match_id
+      , player_id
+      , player_name
+      , season
+      , league
   )
 
   , season_profile as (
@@ -54,38 +54,38 @@ with
       , match_stats.season
       , match_stats.league
       , count(match_stats.match_id) as matches_analyzed
-      , avg(int_match_metadata.effective_minutes) as avg_minutes_played
+      , avg(metadata.effective_minutes) as avg_minutes_played
 
       -- === MÉTRICAS NORMALIZADAS (P90 sobre Tiempo Efectivo) ===
       -- Formula: (Total Eventos / Minutos Efectivos) * 90
       
       -- Ofensiva
-      , avg((match_stats.goals / int_match_metadata.effective_minutes) * 90) as avg_goals_p90
-      , stddev((match_stats.goals / int_match_metadata.effective_minutes) * 90) as std_goals_p90
+      , avg((match_stats.goals / metadata.effective_minutes) * 90) as avg_goals_p90
+      , stddev((match_stats.goals / metadata.effective_minutes) * 90) as std_goals_p90
       
-      , avg((match_stats.total_shots / int_match_metadata.effective_minutes) * 90) as avg_shots_p90
-      , stddev((match_stats.total_shots / int_match_metadata.effective_minutes) * 90) as std_shots_p90
+      , avg((match_stats.total_shots / metadata.effective_minutes) * 90) as avg_shots_p90
+      , stddev((match_stats.total_shots / metadata.effective_minutes) * 90) as std_shots_p90
       
       -- Creación
-      , avg((match_stats.key_passes / int_match_metadata.effective_minutes) * 90) as avg_key_passes_p90
-      , stddev((match_stats.key_passes / int_match_metadata.effective_minutes) * 90) as std_key_passes_p90
+      , avg((match_stats.key_passes / metadata.effective_minutes) * 90) as avg_key_passes_p90
+      , stddev((match_stats.key_passes / metadata.effective_minutes) * 90) as std_key_passes_p90
       
-      , avg((match_stats.successful_dribbles / int_match_metadata.effective_minutes) * 90) as avg_dribbles_p90
-      , stddev((match_stats.successful_dribbles / int_match_metadata.effective_minutes) * 90) as std_dribbles_p90
+      , avg((match_stats.successful_dribbles / metadata.effective_minutes) * 90) as avg_dribbles_p90
+      , stddev((match_stats.successful_dribbles / metadata.effective_minutes) * 90) as std_dribbles_p90
       
       -- Defensa
-      , avg((match_stats.ball_recoveries / int_match_metadata.effective_minutes) * 90) as avg_recoveries_p90
-      , stddev((match_stats.ball_recoveries / int_match_metadata.effective_minutes) * 90) as std_recoveries_p90
+      , avg((match_stats.ball_recoveries / metadata.effective_minutes) * 90) as avg_recoveries_p90
+      , stddev((match_stats.ball_recoveries / metadata.effective_minutes) * 90) as std_recoveries_p90
       
-      , avg((match_stats.tackles_won / int_match_metadata.effective_minutes) * 90) as avg_tackles_p90
-      , stddev((match_stats.tackles_won / int_match_metadata.effective_minutes) * 90) as std_tackles_p90
+      , avg((match_stats.tackles_won / metadata.effective_minutes) * 90) as avg_tackles_p90
+      , stddev((match_stats.tackles_won / metadata.effective_minutes) * 90) as std_tackles_p90
 
-      , avg((match_stats.interceptions / int_match_metadata.effective_minutes) * 90) as avg_interceptions_p90
-      , stddev((match_stats.interceptions / int_match_metadata.effective_minutes) * 90) as std_interceptions_p90
+      , avg((match_stats.interceptions / metadata.effective_minutes) * 90) as avg_interceptions_p90
+      , stddev((match_stats.interceptions / metadata.effective_minutes) * 90) as std_interceptions_p90
       
       -- Intensidad
-      , avg((match_stats.total_actions / int_match_metadata.effective_minutes) * 90) as avg_actions_p90
-      , stddev((match_stats.total_actions / int_match_metadata.effective_minutes) * 90) as std_actions_p90
+      , avg((match_stats.total_actions / metadata.effective_minutes) * 90) as avg_actions_p90
+      , stddev((match_stats.total_actions / metadata.effective_minutes) * 90) as std_actions_p90
       
       -- Ratios (Independientes del tiempo)
       , avg(safe_divide(match_stats.successful_passes, match_stats.total_passes)) as avg_pass_accuracy
@@ -93,9 +93,9 @@ with
 
     from
       match_stats
-      left join ${ref("int_match_metadata")} on match_stats.match_id = int_match_metadata.match_id
+      left join ${ref("int_match_metadata")} as metadata on match_stats.match_id = metadata.match_id
     where
-      int_match_metadata.effective_minutes > 15 -- Filtro de minutos basura
+      metadata.effective_minutes > 15 -- Filtro de minutos basura
     group by
       match_stats.player_id
       , match_stats.player_name

@@ -1,7 +1,19 @@
 version: 2
 
 models:
-  
+  - name: fct_events_enriched
+    description: "Tabla maestra de eventos con más de 180 métricas pivotadas, contexto táctico y estado del partido."
+    columns:
+      - name: event_id
+        description: "PK. ID único del evento."
+      - name: game_state_label
+        description: "Estado del marcador (Winning, Losing, Drawing)."
+      - name: is_big_chance
+        description: "Flag. Ocasión manifiesta de gol."
+      - name: pass_end_x
+        description: "Coordenada X final del pase."
+      - name: field_zone
+        description: "Zona del campo (Right, Left, Center, Back)."
 
   - name: fct_player_season_stats
     description: "Tabla agregada de rendimiento histórico por jugador y temporada. Normalizada a 90 minutos de tiempo efectivo. Sirve como Baseline."
