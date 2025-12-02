@@ -1,49 +1,96 @@
 version: 2
 
 models:
-  # ----------------------------------------------------------------------------
-  # PERFIL DE TEMPORADA (La "Huella Digital" para el Z-Score)
-  # ----------------------------------------------------------------------------
+  
+
   - name: fct_player_season_stats
-    description: >
-      Tabla agregada de rendimiento histórico por jugador y temporada.
-      Esta tabla sirve como **BASELINE (Punto de Referencia)** para el modelo de comparación en vivo.
-      Contiene promedios y desviaciones estándar normalizados por 90 minutos (P90).
-      No tiene contexto de partido (Game State), ya que busca la "media pura" del jugador.
+    description: "Tabla agregada de rendimiento histórico por jugador y temporada. Normalizada a 90 minutos de tiempo efectivo. Sirve como Baseline."
+    columns:
+      - name: player_id
+        description: "Identificador único del jugador."
+      - name: player_name
+        description: "Nombre del jugador."
+      - name: season
+        description: "Temporada analizada."
+      - name: league
+        description: "Liga donde jugó."
+      - name: matches_analyzed
+        description: "Cantidad de partidos computados para este perfil."
+      - name: avg_minutes_played
+        description: "Promedio de minutos jugados por partido."
+      - name: avg_goals_p90
+        description: "Promedio de goles por 90 min."
+      - name: std_goals_p90
+        description: "Desviación estándar de goles."
+      - name: avg_shots_p90
+        description: "Promedio de tiros totales por 90 min."
+      - name: std_shots_p90
+        description: "Desviación estándar de tiros."
+      - name: avg_key_passes_p90
+        description: "Promedio de pases clave por 90 min."
+      - name: std_key_passes_p90
+        description: "Desviación estándar de pases clave."
+      - name: avg_dribbles_p90
+        description: "Promedio de regates completados por 90 min."
+      - name: std_dribbles_p90
+        description: "Desviación estándar de regates."
+      - name: avg_recoveries_p90
+        description: "Promedio de recuperaciones de balón por 90 min."
+      - name: std_recoveries_p90
+        description: "Desviación estándar de recuperaciones."
+      - name: avg_tackles_p90
+        description: "Promedio de entradas ganadas por 90 min."
+      - name: std_tackles_p90
+        description: "Desviación estándar de entradas ganadas."
+      - name: avg_interceptions_p90
+        description: "Promedio de intercepciones por 90 min."
+      - name: std_interceptions_p90
+        description: "Desviación estándar de intercepciones."
+      - name: avg_actions_p90
+        description: "Promedio de acciones totales (volumen de juego) por 90 min."
+      - name: std_actions_p90
+        description: "Desviación estándar de volumen de juego."
+      - name: avg_pass_accuracy
+        description: "Promedio del porcentaje de acierto en el pase."
+      - name: std_pass_accuracy
+        description: "Desviación estándar del acierto en el pase."
+
+  - name: fct_player_season_stats_advanced
+    description: "Tabla avanzada de rendimiento segmentada por Contexto de Partido (Game State)."
     columns:
       - name: player_id
         description: "ID único del jugador."
+      - name: player_name
+        description: "Nombre del jugador."
+      - name: team_id
+        description: "ID del equipo."
       - name: season
-        description: "Temporada analizada (ej. 2023-2024)."
+        description: "Temporada."
       - name: league
-        description: "Liga donde jugó."
-      - name: avg_passes_p90
-        description: "Promedio de pases intentados por 90 minutos."
-      - name: std_passes_p90
-        description: "Desviación estándar de pases (Mide la consistencia/volatilidad)."
-      - name: avg_goals_p90
-        description: "Promedio de goles por 90 minutos."
-      - name: avg_pass_accuracy
-        description: "Porcentaje promedio de acierto en pases (0.0 - 1.0)."
-      - name: matches_analyzed
-        description: "Número de partidos usados para calcular este perfil (debe ser >5 para fiabilidad)."
-
-  # ----------------------------------------------------------------------------
-  # PERFIL CONTEXTUAL (El "Clutch Factor")
-  # ----------------------------------------------------------------------------
-  - name: fct_player_season_stats_advanced
-    description: >
-      Tabla avanzada de rendimiento segmentada por **Contexto de Partido (Game State)**.
-      Responde a preguntas como: "¿Cómo cambia el rendimiento de Vinicius cuando el equipo va perdiendo?".
-      Incluye métricas relativas (% del equipo) y ratios de eficiencia.
-    columns:
+        description: "Liga."
       - name: game_state_label
-        description: "Estado del marcador durante los eventos: 'Winning', 'Losing', 'Drawing'."
-      - name: share_of_team_shots
-        description: "Porcentaje de los tiros totales del equipo que fueron realizados por este jugador."
-      - name: share_of_team_goals
-        description: "Porcentaje de los goles del equipo anotados por este jugador."
+        description: "Contexto del marcador: 'Winning', 'Losing', 'Drawing'."
+      - name: matches_played
+        description: "Partidos jugados en este contexto."
+      - name: goals
+        description: "Goles anotados en este contexto."
+      - name: shots_total
+        description: "Tiros totales en este contexto."
+      - name: shots_on_target
+        description: "Tiros a puerta en este contexto."
+      - name: passes_total
+        description: "Pases totales en este contexto."
+      - name: passes_complete
+        description: "Pases completados en este contexto."
       - name: conversion_rate
-        description: "Eficiencia de cara a gol (Goles / Tiros Totales)."
+        description: "Ratio de conversión (Goles / Tiros)."
       - name: shooting_accuracy
         description: "Puntería (Tiros a Puerta / Tiros Totales)."
+      - name: pass_accuracy
+        description: "Precisión de pase."
+      - name: share_of_team_goals
+        description: "Porcentaje de los goles del equipo anotados por este jugador."
+      - name: share_of_team_shots
+        description: "Porcentaje de los tiros totales del equipo realizados por este jugador."
+      - name: share_of_team_passes
+        description: "Porcentaje de los pases totales del equipo realizados por este jugador."

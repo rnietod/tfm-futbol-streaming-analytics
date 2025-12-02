@@ -1,7 +1,7 @@
 config {
   type: "table"
   , schema: "marts_football"
-  , description: "Perfil estadístico avanzado de jugadores por temporada y contexto (Game State). Incluye métricas relativas al equipo y ratios de eficiencia."
+  , description: "Perfil estadístico avanzado de jugadores por temporada y contexto (Game State)."
   , tags: ["marts"]
   , bigquery: {
       clusterBy: ["player_id", "season", "game_state_label"]
@@ -10,96 +10,92 @@ config {
 
 with
 
-  -- 1. Base de Eventos (Filtrada para juego activo y con Game State)
+  -- 1. Base de Eventos
   base_events as (
     select 
-      match_id
-      , season
-      , league
-      , team_id
-      , player_id
-      , player_name
-      , type_id
-      , outcome
-      , is_key_pass
-      , is_assist
-      , is_big_chance
-      , is_yellow_card
-      , is_red_card
-      , is_foul
-      , field_zone
-      , game_state_label
-      , minute
+      fct_events_enriched.match_id
+      , fct_events_enriched.season
+      , fct_events_enriched.league
+      , fct_events_enriched.team_id
+      , fct_events_enriched.player_id
+      , fct_events_enriched.player_name
+      , fct_events_enriched.type_id
+      , fct_events_enriched.outcome
+      , fct_events_enriched.is_key_pass
+      , fct_events_enriched.is_assist
+      , fct_events_enriched.game_state_label
     from ${ref("fct_events_enriched")}
-    where period_id in (1, 2)
+    where fct_events_enriched.period_id in (1, 2)
   )
 
-  -- 2. Totales por EQUIPO, Temporada y Game State (El Contexto)
+  -- 2. Totales por EQUIPO, Temporada y Game State
   , team_context as (
     select
-      team_id
-      , season
-      , league
-      , game_state_label
-      , count(distinct match_id) as team_matches
-      , countif(type_id = 16) as team_goals
-      , countif(type_id in (13, 14, 15, 16)) as team_shots
-      , countif(type_id = 1) as team_passes
+      base_events.team_id
+      , base_events.season
+      , base_events.league
+      , base_events.game_state_label
+      , count(distinct base_events.match_id) as team_matches
+      , countif(base_events.type_id = 16) as team_goals
+      , countif(base_events.type_id in (13, 14, 15, 16)) as team_shots
+      , countif(base_events.type_id = 1) as team_passes
     from base_events
-    group by 1, 2, 3, 4
+    group by 
+      base_events.team_id
+      , base_events.season
+      , base_events.league
+      , base_events.game_state_label
   )
 
   -- 3. Totales por JUGADOR, Temporada y Game State
-  , player_stats as (
+  , player_context as (
     select
-      player_id
-      , player_name
-      , team_id -- Asumimos equipo principal
-      , season
-      , league
-      , game_state_label
-      , count(distinct match_id) as matches_played
+      base_events.player_id
+      , base_events.player_name
+      , base_events.team_id
+      , base_events.season
+      , base_events.league
+      , base_events.game_state_label
+      , count(distinct base_events.match_id) as matches_played
       
-      -- Métricas Absolutas
-      , countif(type_id = 16) as goals
-      , countif(type_id in (13, 14, 15, 16)) as shots_total
-      , countif(type_id in (14, 15, 16)) as shots_on_target -- Asumiendo 13=Miss
-      , countif(type_id = 1) as passes_total
-      , countif(type_id = 1 and outcome = 1) as passes_complete
-      , countif(is_key_pass) as key_passes
-      , countif(is_assist) as assists
-      
-      -- Defensa
-      , countif(type_id = 7) as tackles
-      , countif(type_id = 8) as interceptions
-      , countif(type_id = 49) as recoveries
+      , countif(base_events.type_id = 16) as goals
+      , countif(base_events.type_id in (13, 14, 15, 16)) as shots_total
+      , countif(base_events.type_id in (14, 15, 16)) as shots_on_target
+      , countif(base_events.type_id = 1) as passes_total
+      , countif(base_events.type_id = 1 and base_events.outcome = 1) as passes_complete
       
     from base_events
-    where player_id is not null
-    group by 1, 2, 3, 4, 5, 6
+    where base_events.player_id is not null
+    group by 
+      base_events.player_id
+      , base_events.player_name
+      , base_events.team_id
+      , base_events.season
+      , base_events.league
+      , base_events.game_state_label
   )
 
-  -- 4. Cruce y Cálculo de Métricas Relativas
+  -- 4. Cruce Final
   , final as (
     select
-      player_stats.*
+      player_context.*
       
       -- Eficiencia (Ratios)
-      , safe_divide(player_stats.goals, player_stats.shots_total) as conversion_rate
-      , safe_divide(player_stats.shots_on_target, player_stats.shots_total) as shooting_accuracy
-      , safe_divide(player_stats.passes_complete, player_stats.passes_total) as pass_accuracy
+      , safe_divide(player_context.goals, player_context.shots_total) as conversion_rate
+      , safe_divide(player_context.shots_on_target, player_context.shots_total) as shooting_accuracy
+      , safe_divide(player_context.passes_complete, player_context.passes_total) as pass_accuracy
       
-      -- Relatividad (% del equipo en ese contexto)
-      , safe_divide(player_stats.goals, team_context.team_goals) as share_of_team_goals
-      , safe_divide(player_stats.shots_total, team_context.team_shots) as share_of_team_shots
-      , safe_divide(player_stats.passes_total, team_context.team_passes) as share_of_team_passes
+      -- Relatividad (% del Equipo en ese contexto)
+      , safe_divide(player_context.goals, team_context.team_goals) as share_of_team_goals
+      , safe_divide(player_context.shots_total, team_context.team_shots) as share_of_team_shots
+      , safe_divide(player_context.passes_total, team_context.team_passes) as share_of_team_passes
 
     from
-      player_stats
+      player_context
       left join team_context 
-        on player_stats.team_id = team_context.team_id 
-        and player_stats.season = team_context.season
-        and player_stats.game_state_label = team_context.game_state_label
+        on player_context.team_id = team_context.team_id 
+        and player_context.season = team_context.season
+        and player_context.game_state_label = team_context.game_state_label
   )
 
 select * from final
