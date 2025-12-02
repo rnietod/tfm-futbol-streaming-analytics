@@ -1,0 +1,49 @@
+version: 2
+
+models:
+  # ----------------------------------------------------------------------------
+  # PERFIL DE TEMPORADA (La "Huella Digital" para el Z-Score)
+  # ----------------------------------------------------------------------------
+  - name: fct_player_season_stats
+    description: >
+      Tabla agregada de rendimiento histórico por jugador y temporada.
+      Esta tabla sirve como **BASELINE (Punto de Referencia)** para el modelo de comparación en vivo.
+      Contiene promedios y desviaciones estándar normalizados por 90 minutos (P90).
+      No tiene contexto de partido (Game State), ya que busca la "media pura" del jugador.
+    columns:
+      - name: player_id
+        description: "ID único del jugador."
+      - name: season
+        description: "Temporada analizada (ej. 2023-2024)."
+      - name: league
+        description: "Liga donde jugó."
+      - name: avg_passes_p90
+        description: "Promedio de pases intentados por 90 minutos."
+      - name: std_passes_p90
+        description: "Desviación estándar de pases (Mide la consistencia/volatilidad)."
+      - name: avg_goals_p90
+        description: "Promedio de goles por 90 minutos."
+      - name: avg_pass_accuracy
+        description: "Porcentaje promedio de acierto en pases (0.0 - 1.0)."
+      - name: matches_analyzed
+        description: "Número de partidos usados para calcular este perfil (debe ser >5 para fiabilidad)."
+
+  # ----------------------------------------------------------------------------
+  # PERFIL CONTEXTUAL (El "Clutch Factor")
+  # ----------------------------------------------------------------------------
+  - name: fct_player_season_stats_advanced
+    description: >
+      Tabla avanzada de rendimiento segmentada por **Contexto de Partido (Game State)**.
+      Responde a preguntas como: "¿Cómo cambia el rendimiento de Vinicius cuando el equipo va perdiendo?".
+      Incluye métricas relativas (% del equipo) y ratios de eficiencia.
+    columns:
+      - name: game_state_label
+        description: "Estado del marcador durante los eventos: 'Winning', 'Losing', 'Drawing'."
+      - name: share_of_team_shots
+        description: "Porcentaje de los tiros totales del equipo que fueron realizados por este jugador."
+      - name: share_of_team_goals
+        description: "Porcentaje de los goles del equipo anotados por este jugador."
+      - name: conversion_rate
+        description: "Eficiencia de cara a gol (Goles / Tiros Totales)."
+      - name: shooting_accuracy
+        description: "Puntería (Tiros a Puerta / Tiros Totales)."

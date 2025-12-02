@@ -99,7 +99,9 @@ models:
   # DICCIONARIOS (Reference Tables)
   # ----------------------------------------------------------------------------
   - name: stg_ref_event_types
-    description: "Catálogo maestro de tipos de eventos (Seed). Traduce los IDs numéricos de Opta a nombres legibles."
+    description: >
+      Catálogo maestro de tipos de eventos (Seed). Traduce los IDs 
+      numéricos de Opta a nombres legibles.
     columns:
       - name: event_type_id
         description: "PK. ID numérico del tipo de evento."
@@ -117,3 +119,12 @@ models:
         description: "Nombre técnico del calificador (ej. Length, Angle, Head)."
       - name: qualifier_definition
         description: "Definición de qué representa este valor."
+  - name: int_game_state
+    description: "Lógica intermedia para calcular el marcador en tiempo real."
+    columns:
+      - name: match_id
+        description: "FK. ID del partido."
+      - name: event_id
+        description: "PK. ID del evento."
+      - name: game_state_label
+        description: "Estado del marcador desde la perspectiva del equipo que realiza el evento: 'Winning', 'Losing', 'Drawing'."
