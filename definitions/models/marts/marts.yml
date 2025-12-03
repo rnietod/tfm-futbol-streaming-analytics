@@ -1,49 +1,56 @@
 version: 2
 
 models:
-  # ----------------------------------------------------------------------------
-  # PERFIL DE TEMPORADA (La "Huella Digital" para el Z-Score)
-  # ----------------------------------------------------------------------------
-  - name: fct_player_season_stats
-    description: >
-      Tabla agregada de rendimiento histórico por jugador y temporada.
-      Esta tabla sirve como **BASELINE (Punto de Referencia)** para el modelo de comparación en vivo.
-      Contiene promedios y desviaciones estándar normalizados por 90 minutos (P90).
-      No tiene contexto de partido (Game State), ya que busca la "media pura" del jugador.
+  - name: fct_events_enriched
+    description: "Tabla maestra de eventos con más de 180 métricas pivotadas, contexto táctico y estado del partido."
+    columns:
+      - name: event_id
+        description: "PK. ID único del evento."
+      - name: game_state_label
+        description: "Estado del marcador (Winning, Losing, Drawing)."
+      - name: is_big_chance
+        description: "Flag. Ocasión manifiesta de gol."
+      - name: pass_end_x
+        description: "Coordenada X final del pase."
+      - name: field_zone
+        description: "Zona del campo (Right, Left, Center, Back)."
+
+  - name: fct_player_performance_profile
+    description: "Perfil maestro de rendimiento del jugador. Agregado por Temporada y Contexto (Game State). Contiene métricas estadísticas (Media/StdDev) para modelos de comparación y métricas relativas (% Share) para análisis de impacto."
     columns:
       - name: player_id
         description: "ID único del jugador."
       - name: season
-        description: "Temporada analizada (ej. 2023-2024)."
-      - name: league
-        description: "Liga donde jugó."
-      - name: avg_passes_p90
-        description: "Promedio de pases intentados por 90 minutos."
-      - name: std_passes_p90
-        description: "Desviación estándar de pases (Mide la consistencia/volatilidad)."
-      - name: avg_goals_p90
-        description: "Promedio de goles por 90 minutos."
-      - name: avg_pass_accuracy
-        description: "Porcentaje promedio de acierto en pases (0.0 - 1.0)."
-      - name: matches_analyzed
-        description: "Número de partidos usados para calcular este perfil (debe ser >5 para fiabilidad)."
-
-  # ----------------------------------------------------------------------------
-  # PERFIL CONTEXTUAL (El "Clutch Factor")
-  # ----------------------------------------------------------------------------
-  - name: fct_player_season_stats_advanced
-    description: >
-      Tabla avanzada de rendimiento segmentada por **Contexto de Partido (Game State)**.
-      Responde a preguntas como: "¿Cómo cambia el rendimiento de Vinicius cuando el equipo va perdiendo?".
-      Incluye métricas relativas (% del equipo) y ratios de eficiencia.
-    columns:
+        description: "Temporada analizada."
       - name: game_state_label
-        description: "Estado del marcador durante los eventos: 'Winning', 'Losing', 'Drawing'."
-      - name: share_of_team_shots
-        description: "Porcentaje de los tiros totales del equipo que fueron realizados por este jugador."
+        description: "Contexto del marcador: 'Winning', 'Losing', 'Drawing'. Permite analizar el rendimiento bajo presión."
+      - name: matches_played
+        description: "Cantidad de partidos donde el jugador participó en este estado de juego."
+      
+      # Métricas P90 (Para Z-Score)
+      - name: avg_goals_p90
+        description: "Media histórica de Goles P90 en este contexto."
+      - name: std_goals_p90
+        description: "Desviación estándar de Goles P90. Mide la volatilidad del jugador."
+      - name: avg_shots_p90
+        description: "Media histórica de Tiros P90."
+      - name: std_shots_p90
+        description: "Desviación estándar de Tiros P90."
+      - name: avg_dribbles_p90
+        description: "Media histórica de Regates completados P90."
+      - name: avg_recoveries_p90
+        description: "Media histórica de Recuperaciones de balón P90."
+      
+      # Eficiencia
+      - name: avg_pass_accuracy
+        description: "Promedio del porcentaje de acierto en el pase por partido."
+      - name: global_conversion_rate
+        description: "Eficiencia global de tiro (Total Goles / Total Tiros) en la temporada."
+      
+      # Relatividad (Impacto)
       - name: share_of_team_goals
-        description: "Porcentaje de los goles del equipo anotados por este jugador."
-      - name: conversion_rate
-        description: "Eficiencia de cara a gol (Goles / Tiros Totales)."
-      - name: shooting_accuracy
-        description: "Puntería (Tiros a Puerta / Tiros Totales)."
+        description: "Porcentaje de los goles totales del equipo anotados por este jugador en este contexto."
+      - name: share_of_team_shots
+        description: "Porcentaje de la producción ofensiva (tiros) del equipo que pasa por este jugador."
+      - name: share_of_team_passes
+        description: "Cuota de participación en el juego (Pases del jugador / Pases totales del equipo)."
