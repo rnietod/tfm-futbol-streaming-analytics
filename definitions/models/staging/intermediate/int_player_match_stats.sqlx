@@ -1,0 +1,68 @@
+config {
+  type: "view"
+  , schema: "staging_football"
+  , description: "Agregación de estadísticas por jugador, partido y estado del juego. Calcula el tiempo aproximado en cada estado para normalización."
+  , tags: ["intermediate"]
+}
+
+with
+
+  enriched_events as (
+    select * from ${ref("fct_events_enriched")}
+  )
+
+  , match_meta as (
+    select * from ${ref("int_match_metadata")}
+  )
+
+  , aggregation as (
+    select
+      enriched_events.match_id
+      , enriched_events.season
+      , enriched_events.league
+      , enriched_events.team_id
+      , enriched_events.player_id
+      , enriched_events.player_name
+      , enriched_events.game_state_label
+      
+      -- Metadatos de tiempo para normalización
+      , match_meta.effective_minutes as match_total_effective_minutes
+      , (max(enriched_events.minute) - min(enriched_events.minute)) + 1 as minutes_in_state_approx
+      
+      -- Métricas de Volumen (Conteos)
+      , countif(enriched_events.type_id = 16) as goals
+      , countif(enriched_events.type_id in (13, 14, 15, 16)) as total_shots
+      , countif(enriched_events.type_id = 1) as total_passes
+      , countif(enriched_events.type_id = 1 and enriched_events.outcome = 1) as successful_passes
+      , countif(enriched_events.type_id = 3 and enriched_events.outcome = 1) as successful_dribbles
+      , countif(enriched_events.type_id = 7 and enriched_events.outcome = 1) as tackles_won
+      , countif(enriched_events.type_id = 8) as interceptions
+      , countif(enriched_events.type_id = 49) as ball_recoveries
+      
+    from
+      enriched_events
+      left join match_meta using (match_id)
+    where
+      enriched_events.player_id is not null
+      and enriched_events.period_id in (1, 2)
+    group by
+      1, 2, 3, 4, 5, 6, 7, 8
+  )
+
+  , final as (
+    select
+      *
+      -- Normalización P90 Dinámica por Estado
+      -- Si jugó menos de 5 min en ese estado, la proyección P90 es volátil, pero necesaria para la media.
+      , safe_divide(goals * 90, minutes_in_state_approx) as goals_p90
+      , safe_divide(total_shots * 90, minutes_in_state_approx) as shots_p90
+      , safe_divide(successful_dribbles * 90, minutes_in_state_approx) as dribbles_p90
+      , safe_divide(ball_recoveries * 90, minutes_in_state_approx) as recoveries_p90
+      
+      -- Ratios de Eficiencia
+      , safe_divide(successful_passes, total_passes) as pass_accuracy
+    from
+      aggregation
+  )
+
+select * from final

@@ -24,3 +24,13 @@ models:
         description: "Duración total del partido calculada desde el primer evento hasta el último."
       - name: effective_minutes
         description: "Minutos de tiempo efectivo de juego. Actualmente calculado igual al global, pendiente de integración con fuente externa."
+
+  - name: int_player_match_stats
+    description: "Calculadora de estadísticas por partido y estado (Game State). Normaliza métricas a P90 basándose en la duración de ese estado en el partido."
+    columns:
+      - name: game_state_label
+        description: "Contexto: Winning, Losing, Drawing."
+      - name: minutes_in_state_approx
+        description: "Minutos aproximados que el jugador pasó en este estado durante el partido."
+      - name: goals_p90
+        description: "Proyección de goles a 90 minutos dentro de este contexto específico."

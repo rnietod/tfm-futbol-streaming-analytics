@@ -15,6 +15,46 @@ models:
       - name: field_zone
         description: "Zona del campo (Right, Left, Center, Back)."
 
+  - name: fct_player_performance_profile
+    description: "Perfil maestro de rendimiento del jugador. Agregado por Temporada y Contexto (Game State). Contiene métricas estadísticas (Media/StdDev) para modelos de comparación y métricas relativas (% Share) para análisis de impacto."
+    columns:
+      - name: player_id
+        description: "ID único del jugador."
+      - name: season
+        description: "Temporada analizada."
+      - name: game_state_label
+        description: "Contexto del marcador: 'Winning', 'Losing', 'Drawing'. Permite analizar el rendimiento bajo presión."
+      - name: matches_played
+        description: "Cantidad de partidos donde el jugador participó en este estado de juego."
+      
+      # Métricas P90 (Para Z-Score)
+      - name: avg_goals_p90
+        description: "Media histórica de Goles P90 en este contexto."
+      - name: std_goals_p90
+        description: "Desviación estándar de Goles P90. Mide la volatilidad del jugador."
+      - name: avg_shots_p90
+        description: "Media histórica de Tiros P90."
+      - name: std_shots_p90
+        description: "Desviación estándar de Tiros P90."
+      - name: avg_dribbles_p90
+        description: "Media histórica de Regates completados P90."
+      - name: avg_recoveries_p90
+        description: "Media histórica de Recuperaciones de balón P90."
+      
+      # Eficiencia
+      - name: avg_pass_accuracy
+        description: "Promedio del porcentaje de acierto en el pase por partido."
+      - name: global_conversion_rate
+        description: "Eficiencia global de tiro (Total Goles / Total Tiros) en la temporada."
+      
+      # Relatividad (Impacto)
+      - name: share_of_team_goals
+        description: "Porcentaje de los goles totales del equipo anotados por este jugador en este contexto."
+      - name: share_of_team_shots
+        description: "Porcentaje de la producción ofensiva (tiros) del equipo que pasa por este jugador."
+      - name: share_of_team_passes
+        description: "Cuota de participación en el juego (Pases del jugador / Pases totales del equipo)."
+
   - name: fct_player_season_stats
     description: "Tabla agregada de rendimiento histórico por jugador y temporada. Normalizada a 90 minutos de tiempo efectivo. Sirve como Baseline."
     columns:
