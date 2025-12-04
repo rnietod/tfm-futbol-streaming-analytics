@@ -1,0 +1,172 @@
+config {
+  type: "incremental"
+  , schema: "marts_football"
+  , description: "Tabla maestra de eventos enriquecida (Incremental). Contiene métricas pivotadas y contexto."
+  , tags: ["marts"]
+  , uniqueKey: ["event_key"]
+  , bigquery: {
+      partitionBy: "DATE(event_timestamp)"
+      , clusterBy: ["match_id", "player_id"]
+  }
+}
+
+with
+
+  -- 1. Eventos Base
+  events as (
+    select * from ${ref("stg_events")}
+    ${when(incremental(), `WHERE ingested_at > (SELECT MAX(ingested_at) FROM ${self()})`)}
+    QUALIFY ROW_NUMBER() OVER (PARTITION BY event_key ORDER BY ingested_at DESC) = 1
+  )
+
+  -- 2. Diccionario de Tipos
+  , event_types as (
+    select * from ${ref("stg_ref_event_types")}
+  )
+  
+  -- 3. Qualifiers (Fuente Vertical)
+  , qualifiers as (
+    select * from ${ref("stg_event_qualifiers")}
+  )
+
+  -- 4. Game State
+  , game_state as (
+    select * from ${ref("int_game_state")}
+  )
+
+  -- 5. CTE DE PIVOTE
+  , pivoted_qualifiers as (
+    select
+      match_id
+      , event_id
+      , event_key
+      
+      -- Booleanos
+      , max(case when qualifier_type_id = 1 then true else false end) as is_long_ball
+      , max(case when qualifier_type_id = 2 then true else false end) as is_cross
+      , max(case when qualifier_type_id = 3 then true else false end) as is_head_pass
+      , max(case when qualifier_type_id = 4 then true else false end) as is_through_ball
+      , max(case when qualifier_type_id = 5 then true else false end) as is_free_kick_taken
+      , max(case when qualifier_type_id = 6 then true else false end) as is_corner_taken
+      , max(case when qualifier_type_id = 8 then true else false end) as is_goal_disallowed
+      , max(case when qualifier_type_id = 9 then true else false end) as is_penalty
+      , max(case when qualifier_type_id = 10 then true else false end) as is_hand
+      , max(case when qualifier_type_id = 12 then true else false end) as is_dangerous_play
+      , max(case when qualifier_type_id = 13 then true else false end) as is_foul
+      , max(case when qualifier_type_id = 14 then true else false end) as is_last_line
+      
+      -- Partes del cuerpo
+      , max(case when qualifier_type_id = 15 then true else false end) as body_head
+      , max(case when qualifier_type_id = 20 then true else false end) as body_right_foot
+      , max(case when qualifier_type_id = 21 then true else false end) as body_left_foot
+      , max(case when qualifier_type_id = 72 then true else false end) as body_other
+      
+      -- Contexto
+      , max(case when qualifier_type_id = 22 then true else false end) as is_regular_play
+      , max(case when qualifier_type_id = 23 then true else false end) as is_fast_break
+      , max(case when qualifier_type_id = 24 then true else false end) as is_set_piece
+      , max(case when qualifier_type_id = 25 then true else false end) as is_from_corner
+      , max(case when qualifier_type_id = 26 then true else false end) as is_free_kick
+      , max(case when qualifier_type_id = 28 then true else false end) as is_own_goal
+      , max(case when qualifier_type_id = 29 then true else false end) as is_assisted
+      
+      -- Cartulinas
+      , max(case when qualifier_type_id = 30 then true else false end) as is_involved_players
+      , max(case when qualifier_type_id = 31 then true else false end) as is_yellow_card
+      , max(case when qualifier_type_id = 32 then true else false end) as is_second_yellow
+      , max(case when qualifier_type_id = 33 then true else false end) as is_red_card
+      , max(case when qualifier_type_id = 34 then true else false end) as is_referee_abuse
+      , max(case when qualifier_type_id = 35 then true else false end) as is_argument
+      , max(case when qualifier_type_id = 36 then true else false end) as is_fight
+      , max(case when qualifier_type_id = 37 then true else false end) as is_time_wasting
+      , max(case when qualifier_type_id = 38 then true else false end) as is_excessive_celebration
+      , max(case when qualifier_type_id = 39 then true else false end) as is_crowd_interaction
+      , max(case when qualifier_type_id = 40 then true else false end) as is_other_reason
+      , max(case when qualifier_type_id = 41 then true else false end) as is_injury
+      
+      -- Flags Tacticos
+      , max(case when qualifier_type_id = 60 then true else false end) as is_small_box_centre
+      , max(case when qualifier_type_id = 61 then true else false end) as is_box_centre
+      , max(case when qualifier_type_id = 62 then true else false end) as is_out_of_box_centre
+      , max(case when qualifier_type_id = 63 then true else false end) as is_35_plus_centre
+      , max(case when qualifier_type_id = 64 then true else false end) as is_end_of_period
+      , max(case when qualifier_type_id = 65 then true else false end) as is_blocked
+      
+      -- Bloqueos
+      , max(case when qualifier_type_id = 82 then true else false end) as is_blocked_shot
+      , max(case when qualifier_type_id = 94 then true else false end) as is_blocked_cross
+      , max(case when qualifier_type_id = 95 then true else false end) as is_blocked_pass
+      
+      -- Portero
+      , max(case when qualifier_type_id = 173 then true else false end) as gk_hands
+      , max(case when qualifier_type_id = 174 then true else false end) as gk_feet
+      , max(case when qualifier_type_id = 175 then true else false end) as gk_body
+      , max(case when qualifier_type_id = 176 then true else false end) as gk_save_attempt
+      , max(case when qualifier_type_id = 177 then true else false end) as gk_dive
+      , max(case when qualifier_type_id = 178 then true else false end) as gk_standing
+      , max(case when qualifier_type_id = 179 then true else false end) as gk_stooping
+      , max(case when qualifier_type_id = 180 then true else false end) as gk_reach
+      , max(case when qualifier_type_id = 181 then true else false end) as gk_diving_save
+      , max(case when qualifier_type_id = 182 then true else false end) as gk_standing_save
+      , max(case when qualifier_type_id = 183 then true else false end) as gk_stooping_save
+
+      -- Calidad
+      , max(case when qualifier_type_id = 214 then true else false end) as is_big_chance
+      , max(case when qualifier_type_id = 215 then true else false end) as is_individual_play
+
+      -- Valores Numericos (Safe Cast)
+      , safe_cast(max(case when qualifier_type_id = 102 then qualifier_value end) as float64) as goal_mouth_y
+      , safe_cast(max(case when qualifier_type_id = 103 then qualifier_value end) as float64) as goal_mouth_z
+      , safe_cast(max(case when qualifier_type_id = 140 then qualifier_value end) as float64) as pass_end_x
+      , safe_cast(max(case when qualifier_type_id = 141 then qualifier_value end) as float64) as pass_end_y
+      , safe_cast(max(case when qualifier_type_id = 146 then qualifier_value end) as float64) as blocked_x
+      , safe_cast(max(case when qualifier_type_id = 147 then qualifier_value end) as float64) as blocked_y
+      , safe_cast(max(case when qualifier_type_id = 212 then qualifier_value end) as float64) as length
+      , safe_cast(max(case when qualifier_type_id = 213 then qualifier_value end) as float64) as angle
+
+      -- Descriptivos
+      , max(case when qualifier_type_id = 7 then qualifier_value end) as player_caught_offside_id
+      , max(case when qualifier_type_id = 42 then qualifier_value end) as player_position_id
+      , max(case when qualifier_type_id = 44 then qualifier_value end) as player_position_desc
+      , max(case when qualifier_type_id = 53 then qualifier_value end) as injured_player_id
+      , max(case when qualifier_type_id = 56 then qualifier_value end) as field_zone
+      , max(case when qualifier_type_id = 57 then qualifier_value end) as end_reason
+      , max(case when qualifier_type_id = 59 then qualifier_value end) as jersey_number
+
+      -- Rangos Medios
+      , max(case when qualifier_type_id = 106 then qualifier_value end) as formation_id
+      , max(case when qualifier_type_id = 107 then qualifier_value end) as throw_in_id
+      , max(case when qualifier_type_id = 132 then qualifier_value end) as dive_side
+      , max(case when qualifier_type_id = 133 then qualifier_value end) as keeper_save_method
+      
+      -- Rangos Altos
+      , max(case when qualifier_type_id = 194 then qualifier_value end) as captain_player_id
+      , max(case when qualifier_type_id = 210 then qualifier_value end) as shot_assist_id
+      , max(case when qualifier_type_id = 211 then qualifier_value end) as shot_assist_type
+      , max(case when qualifier_type_id = 216 then qualifier_value end) as second_assist_id
+      , max(case when qualifier_type_id = 228 then qualifier_value end) as player_off_id
+      , max(case when qualifier_type_id = 229 then qualifier_value end) as player_on_id
+
+    from
+      qualifiers
+    group by
+      match_id
+      , event_id
+      , event_key
+  )
+
+  -- 6. UNIÓN FINAL
+  , joined as (
+    select
+      events.*
+      , event_types.event_type_name
+      , game_state.game_state_label
+      , pivoted_qualifiers.* except(match_id, event_id, event_key)
+    from
+      events
+      left join event_types on events.type_id = event_types.event_type_id
+      left join pivoted_qualifiers on events.event_key = pivoted_qualifiers.event_key and events.match_id = pivoted_qualifiers.match_id
+      left join game_state on events.event_key = game_state.event_key
+  )
+
+select * from joined

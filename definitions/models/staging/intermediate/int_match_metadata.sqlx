@@ -1,0 +1,34 @@
+config {
+  type: "view"
+  , schema: "staging_football"
+  , description: "Metadatos a nivel de partido. Centraliza el cálculo de duración (Tiempo Efectivo vs Tiempo Global)."
+  , tags: ["intermediate"]
+}
+
+with
+
+  source as (
+    select
+      events.match_id
+      , max(events.minute) as max_min
+      , min(events.minute) as min_min
+    from
+      ${ref("stg_events")} as events
+    group by
+      events.match_id
+  )
+
+  , final as (
+    select
+      source.match_id
+      -- LÓGICA DE TIEMPO (Placeholder actual: Calculado por diferencia de minutos)
+      -- Futuro: Aquí haremos el JOIN con el CSV de tiempo efectivo real
+      , (source.max_min - source.min_min) + 1 as minutes_played_global
+      
+      -- Campo clave para normalización P90
+      , (source.max_min - source.min_min) + 1 as effective_minutes
+    from
+      source
+  )
+
+select * from final

@@ -1,0 +1,98 @@
+config {
+  type: "table"
+  , schema: "marts_football"
+  , description: "Perfil estadístico histórico de jugadores por temporada. Base para el modelo de Z-Score."
+  , tags: ["marts"]
+  , bigquery: {
+      clusterBy: ["player_id", "season"]
+  }
+}
+
+with
+
+  match_stats as (
+    select
+      player_id
+      , player_name
+      , season
+      , league
+      , team_id
+      , match_id
+      
+      -- Métricas de Volumen (Conteos brutos por partido)
+      , countif(type_id = 1) as passes_total
+      , countif(type_id = 1 and outcome = 1) as passes_complete
+      , countif(type_id = 1 and is_long_ball) as long_balls
+      , countif(type_id = 1 and is_key_pass) as key_passes
+      
+      -- Finalización
+      , countif(type_id in (13, 14, 15, 16)) as shots_total
+      , countif(type_id = 16) as goals
+      , countif(type_id in (13, 14, 15, 16) and is_big_chance) as big_chances
+      , countif(type_id in (13, 14, 15, 16) and field_zone = 'Center') as central_shots
+      
+      -- Defensa (Recuperaciones, Entradas, Intercepciones)
+      , countif(type_id = 7) as tackles
+      , countif(type_id = 8) as interceptions
+      , countif(type_id = 49) as recoveries
+      , countif(type_id = 4) as fouls_committed
+      
+      -- Conducción (Eventos de Take On / Regate - Type ID 3)
+      , countif(type_id = 3) as dribbles_attempted
+      , countif(type_id = 3 and outcome = 1) as dribbles_complete
+
+    from
+      ${ref("fct_events_enriched")}
+    where
+      player_id is not null
+      and period_id in (1, 2) -- Solo tiempo regular
+    group by
+      1, 2, 3, 4, 5, 6
+  )
+
+  , season_stats as (
+    select
+      player_id
+      , player_name
+      , season
+      , league
+      , any_value(team_id) as main_team_id -- Equipo principal (si cambió, toma uno arbitrario)
+      , count(distinct match_id) as matches_played
+      
+      -- =========================================================
+      -- CÁLCULO DEL PERFIL (Media y Desviación Estándar)
+      -- =========================================================
+      
+      -- Pases
+      , avg(passes_total) as avg_passes
+      , stddev(passes_total) as std_passes
+      , avg(safe_divide(passes_complete, passes_total)) as avg_pass_accuracy
+      , avg(key_passes) as avg_key_passes
+      , stddev(key_passes) as std_key_passes
+
+      -- Tiros
+      , avg(shots_total) as avg_shots
+      , stddev(shots_total) as std_shots
+      , avg(goals) as avg_goals
+      , stddev(goals) as std_goals
+      , avg(big_chances) as avg_big_chances
+
+      -- Defensa
+      , avg(recoveries) as avg_recoveries
+      , stddev(recoveries) as std_recoveries
+      , avg(tackles) as avg_tackles
+      
+      -- Regates
+      , avg(dribbles_attempted) as avg_dribbles
+      , stddev(dribbles_attempted) as std_dribbles
+      , avg(safe_divide(dribbles_complete, dribbles_attempted)) as avg_dribble_success_rate
+
+    from
+      match_stats
+    group by
+      1, 2, 3, 4
+    having
+      count(distinct match_id) >= 5 -- Filtro: Jugadores con al menos 5 partidos para tener significancia estadística
+  )
+
+select * from season_stats

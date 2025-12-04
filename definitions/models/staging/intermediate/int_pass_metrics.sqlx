@@ -1,0 +1,73 @@
+config {
+  type: "view"
+  , schema: "staging_football"
+  , description: "Cálculo de métricas avanzadas de pase (Progresividad, Ganancia de Terreno) evento a evento."
+  , tags: ["intermediate"]
+}
+
+with
+
+  pass_events as (
+    select 
+      fct_events_enriched.match_id
+      , fct_events_enriched.event_id
+      , fct_events_enriched.player_id
+      , fct_events_enriched.team_id
+      , fct_events_enriched.location_x
+      , fct_events_enriched.location_y
+      , fct_events_enriched.pass_end_x
+      , fct_events_enriched.pass_end_y
+      , fct_events_enriched.length as pass_length
+    from ${ref("fct_events_enriched")} as fct_events_enriched
+    where 
+      fct_events_enriched.type_id = 1 -- Solo Pases
+      and fct_events_enriched.outcome = 1 -- Solo Pases Completos
+      and fct_events_enriched.pass_end_x is not null 
+      and fct_events_enriched.pass_end_y is not null
+  )
+
+  , distance_calc as (
+    select
+      pass_events.match_id
+      , pass_events.event_id
+      , pass_events.location_x
+      , pass_events.pass_end_x
+      , pass_events.pass_end_y
+      
+      -- Distancia al centro de la portería rival (100, 50) desde el INICIO del pase
+      , sqrt(pow(100 - pass_events.location_x, 2) + pow(50 - pass_events.location_y, 2)) as dist_start_to_goal
+      
+      -- Distancia al centro de la portería rival (100, 50) desde el FIN del pase
+      , sqrt(pow(100 - pass_events.pass_end_x, 2) + pow(50 - pass_events.pass_end_y, 2)) as dist_end_to_goal
+    from 
+      pass_events
+  )
+
+  , progressive_logic as (
+    select
+      distance_calc.match_id
+      , distance_calc.event_id
+      
+      -- Cálculo de ganancia neta de terreno hacia la portería
+      , (distance_calc.dist_start_to_goal - distance_calc.dist_end_to_goal) as dist_gained_towards_goal
+      
+      -- Flag de Progresivo
+      , case 
+          -- Regla 1: Acercar el balón significativamente (aprox 10 metros / 9.5 unidades Opta)
+          -- Excluyendo el tercio defensivo propio (location_x < 40)
+          when (distance_calc.dist_start_to_goal - distance_calc.dist_end_to_goal) > 9.5 
+               and distance_calc.location_x > 40 
+          then true
+          
+          -- Regla 2: Pase que entra al área rival (y no empezó dentro)
+          when distance_calc.pass_end_x >= 83 and distance_calc.pass_end_y >= 21 and distance_calc.pass_end_y <= 79
+               and not (distance_calc.location_x >= 83)
+          then true
+          
+          else false
+        end as is_progressive_pass
+        
+    from distance_calc
+  )
+
+select * from progressive_logic

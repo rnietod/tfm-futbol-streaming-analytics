@@ -1,0 +1,27 @@
+config {
+  type: "declaration",
+  database: "tfm-master-futbol",
+  schema: "staging_football",
+  name: "raw_events_native"
+}
+
+config {
+  type: "declaration",
+  database: "tfm-master-futbol",
+  schema: "staging_football",
+  name: "ref_event_types"
+}
+
+config {
+  type: "declaration",
+  database: "tfm-master-futbol",
+  schema: "staging_football",
+  name: "ref_qualifier_types"
+}
+
+config {
+  type: "declaration",
+  database: "tfm-master-futbol",
+  schema: "staging_football",
+  name: "ref_satisfied_event_types"
+}

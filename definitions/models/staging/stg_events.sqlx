@@ -1,0 +1,54 @@
+config {
+  type: "view"
+  , schema: "staging_football"
+  , description: "tabla transaccional base de eventos aplanados (1 fila por evento)"
+  , tags: ["staging"]
+}
+
+with
+
+  source as (
+    select
+      -- metadatos de archivo
+      raw_events.file_name
+      , raw_events.league
+      , raw_events.season
+      , raw_events.ingested_at
+      
+      -- informacion del partido (nivel superior)
+      , json_value(raw_events.payload.matchInfo.id) as match_id
+      , json_value(raw_events.payload.matchInfo.description) as match_description
+      , json_value(raw_events.payload.matchInfo.localDate) as match_date
+      , json_value(raw_events.payload.matchInfo.competition.id) as competition_id
+      , json_value(raw_events.payload.matchInfo.competition.name) as competition_name
+      
+      -- detalles del evento (unnest)
+      , to_hex(md5(concat(json_value(raw_events.payload.matchInfo.id), json_value(match_event.id)))) as event_key
+      , json_value(match_event.id) as event_id
+      , cast(json_value(match_event.eventId) as int64) as event_index_in_match
+      , cast(json_value(match_event.typeId) as int64) as type_id
+      , cast(json_value(match_event.periodId) as int64) as period_id
+      , cast(json_value(match_event.timeMin) as int64) as minute
+      , cast(json_value(match_event.timeSec) as int64) as second
+      , timestamp(json_value(match_event.timeStamp)) as event_timestamp
+      , cast(json_value(match_event.outcome) as int64) as outcome
+      
+      -- coordenadas origen
+      , cast(json_value(match_event.x) as float64) as location_x
+      , cast(json_value(match_event.y) as float64) as location_y
+      
+      -- actores
+      , json_value(match_event.contestantId) as team_id
+      , json_value(match_event.playerId) as player_id
+      , json_value(match_event.playerName) as player_name
+      
+      -- flags booleanos directos (no qualifiers)
+      , coalesce(cast(json_value(match_event.keyPass) as int64), 0) = 1 as is_key_pass
+      , coalesce(cast(json_value(match_event.assist) as int64), 0) = 1 as is_assist
+
+    from
+      `tfm-master-futbol.staging_football.raw_events_native` as raw_events
+      , unnest(json_query_array(raw_events.payload.liveData.event)) as match_event
+  )
+
+select * from source
