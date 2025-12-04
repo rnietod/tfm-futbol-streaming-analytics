@@ -22,6 +22,8 @@ models:
         description: "ID de la competición."
       - name: competition_name
         description: "Nombre de la competición."
+      - name: event_key
+        description: "PK Global. Hash MD5 generado a partir de CONCAT(match_id, event_id) para garantizar unicidad universal."
       - name: event_id
         description: "PK. ID único del evento."
       - name: event_index_in_match

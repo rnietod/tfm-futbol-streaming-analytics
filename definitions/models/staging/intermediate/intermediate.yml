@@ -34,3 +34,17 @@ models:
         description: "Minutos aproximados que el jugador pasó en este estado durante el partido."
       - name: goals_p90
         description: "Proyección de goles a 90 minutos dentro de este contexto específico."
+      - name: progressive_passes_p90
+        description:
+
+  - name: int_pass_metrics
+    description: "Tabla calculada con métricas avanzadas de pase. Determina si un pase es 'Progresivo' basándose en la ganancia de distancia hacia la portería."
+    columns:
+      - name: match_id
+        description: "FK. ID del partido."
+      - name: event_id
+        description: "PK. ID del evento de pase."
+      - name: is_progressive_pass
+        description: "Flag booleano. Indica si el pase acercó el balón significativamente a la portería rival o rompió líneas defensivas."
+      - name: dist_gained_towards_goal
+        description: "Distancia neta (en unidades de campo) que el balón se acercó al centro de la portería."

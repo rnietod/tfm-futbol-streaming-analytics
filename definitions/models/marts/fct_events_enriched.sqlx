@@ -3,7 +3,7 @@ config {
   , schema: "marts_football"
   , description: "Tabla maestra de eventos enriquecida (Incremental). Contiene métricas pivotadas y contexto."
   , tags: ["marts"]
-  , uniqueKey: ["event_id"]
+  , uniqueKey: ["event_key"]
   , bigquery: {
       partitionBy: "DATE(event_timestamp)"
       , clusterBy: ["match_id", "player_id"]
@@ -16,6 +16,7 @@ with
   events as (
     select * from ${ref("stg_events")}
     ${when(incremental(), `WHERE ingested_at > (SELECT MAX(ingested_at) FROM ${self()})`)}
+    QUALIFY ROW_NUMBER() OVER (PARTITION BY event_key ORDER BY ingested_at DESC) = 1
   )
 
   -- 2. Diccionario de Tipos
@@ -38,6 +39,7 @@ with
     select
       match_id
       , event_id
+      , event_key
       
       -- Booleanos
       , max(case when qualifier_type_id = 1 then true else false end) as is_long_ball
@@ -150,6 +152,7 @@ with
     group by
       match_id
       , event_id
+      , event_key
   )
 
   -- 6. UNIÓN FINAL
@@ -158,12 +161,12 @@ with
       events.*
       , event_types.event_type_name
       , game_state.game_state_label
-      , pivoted_qualifiers.* except(match_id, event_id)
+      , pivoted_qualifiers.* except(match_id, event_id, event_key)
     from
       events
       left join event_types on events.type_id = event_types.event_type_id
-      left join pivoted_qualifiers on events.event_id = pivoted_qualifiers.event_id and events.match_id = pivoted_qualifiers.match_id
-      left join game_state on events.event_id = game_state.event_id
+      left join pivoted_qualifiers on events.event_key = pivoted_qualifiers.event_key and events.match_id = pivoted_qualifiers.match_id
+      left join game_state on events.event_key = game_state.event_key
   )
 
 select * from joined

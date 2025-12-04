@@ -3,6 +3,9 @@ config {
   , schema: "staging_football"
   , description: "Tabla intermedia que calcula el estado del marcador (Ganando/Perdiendo/Empatando) evento a evento."
   , tags: ["intermediate"]
+  , assertions: {
+      uniqueKey: ["event_key"]
+  }
 }
 
 with
@@ -11,6 +14,7 @@ with
     select 
       match_id
       , event_id
+      , event_key
       , event_index_in_match
       , team_id
       , period_id
@@ -27,6 +31,7 @@ with
     select
       events.match_id
       , events.event_id
+      , events.event_key
       , events.team_id
       , events.event_index_in_match
       
@@ -52,6 +57,7 @@ with
     select
       score_running.match_id
       , score_running.event_id
+      , score_running.event_key
       , score_running.current_team_score
       , (score_running.current_match_score - score_running.current_team_score) as current_opponent_score
       
@@ -68,8 +74,11 @@ with
 select 
   match_id
   , event_id
+  , event_key
   , current_team_score
   , current_opponent_score
   , game_state_label 
 from 
   game_state
+
+qualify row_number() over (partition by event_key order by current_team_score desc) = 1

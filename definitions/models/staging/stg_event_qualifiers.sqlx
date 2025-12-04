@@ -12,6 +12,7 @@ with
       -- llaves de cruce
       json_value(raw_events.payload.matchInfo.id) as match_id
       , json_value(match_event.id) as event_id
+      , to_hex(md5(concat(json_value(raw_events.payload.matchInfo.id), json_value(match_event.id)))) as event_key
       , raw_events.file_name
 
       -- datos del qualifier

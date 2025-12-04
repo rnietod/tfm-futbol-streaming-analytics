@@ -11,6 +11,10 @@ with
     select * from ${ref("fct_events_enriched")}
   )
 
+  , pass_metrics as (
+    select * from ${ref("int_pass_metrics")}
+  )
+
   , match_meta as (
     select * from ${ref("int_match_metadata")}
   )
@@ -34,6 +38,7 @@ with
       , countif(enriched_events.type_id in (13, 14, 15, 16)) as total_shots
       , countif(enriched_events.type_id = 1) as total_passes
       , countif(enriched_events.type_id = 1 and enriched_events.outcome = 1) as successful_passes
+      , countif(pass_metrics.is_progressive_pass) as progressive_passes
       , countif(enriched_events.type_id = 3 and enriched_events.outcome = 1) as successful_dribbles
       , countif(enriched_events.type_id = 7 and enriched_events.outcome = 1) as tackles_won
       , countif(enriched_events.type_id = 8) as interceptions
@@ -42,6 +47,7 @@ with
     from
       enriched_events
       left join match_meta using (match_id)
+      left join pass_metrics using (event_id)
     where
       enriched_events.player_id is not null
       and enriched_events.period_id in (1, 2)
@@ -56,6 +62,7 @@ with
       -- Si jugó menos de 5 min en ese estado, la proyección P90 es volátil, pero necesaria para la media.
       , safe_divide(goals * 90, minutes_in_state_approx) as goals_p90
       , safe_divide(total_shots * 90, minutes_in_state_approx) as shots_p90
+      , safe_divide(aggregation.progressive_passes * 90, aggregation.minutes_in_state_approx) as progressive_passes_p90
       , safe_divide(successful_dribbles * 90, minutes_in_state_approx) as dribbles_p90
       , safe_divide(ball_recoveries * 90, minutes_in_state_approx) as recoveries_p90
       
