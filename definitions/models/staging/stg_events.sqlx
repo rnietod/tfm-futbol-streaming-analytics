@@ -23,6 +23,7 @@ with
       , json_value(raw_events.payload.matchInfo.competition.name) as competition_name
       
       -- detalles del evento (unnest)
+      , to_hex(md5(concat(json_value(raw_events.payload.matchInfo.id), json_value(match_event.id)))) as event_key
       , json_value(match_event.id) as event_id
       , cast(json_value(match_event.eventId) as int64) as event_index_in_match
       , cast(json_value(match_event.typeId) as int64) as type_id

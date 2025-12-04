@@ -30,6 +30,10 @@ with
       -- Tiros
       , avg(int_player_match_stats.shots_p90) as avg_shots_p90
       , stddev(int_player_match_stats.shots_p90) as std_shots_p90
+
+      -- Pases Progresivos
+      , avg(int_player_match_stats.progressive_passes_p90) as avg_progressive_passes_p90
+      , stddev(int_player_match_stats.progressive_passes_p90) as std_progressive_passes_p90
       
       -- Regates
       , avg(int_player_match_stats.dribbles_p90) as avg_dribbles_p90
@@ -48,6 +52,7 @@ with
       , sum(int_player_match_stats.total_shots) as total_shots
       , sum(int_player_match_stats.total_passes) as total_passes
       , sum(int_player_match_stats.successful_passes) as total_successful_passes
+      , sum(int_player_match_stats.progressive_passes) as total_progressive_passes
 
     from
       ${ref("int_player_match_stats")} as int_player_match_stats
@@ -68,6 +73,7 @@ with
       , sum(int_player_match_stats.goals) as team_total_goals
       , sum(int_player_match_stats.total_shots) as team_total_shots
       , sum(int_player_match_stats.total_passes) as team_total_passes
+      , sum(int_player_match_stats.progressive_passes) as team_total_progressive_passes
     from
       ${ref("int_player_match_stats")} as int_player_match_stats
     group by
@@ -100,11 +106,14 @@ with
       , player_stats.std_recoveries_p90
       , player_stats.avg_pass_accuracy
       , player_stats.std_pass_accuracy
+      , player_stats.avg_progressive_passes_p90
+      , player_stats.std_progressive_passes_p90
 
       -- Métricas Relativas (Share of Team)
       , safe_divide(player_stats.total_goals, team_stats.team_total_goals) as share_of_team_goals
       , safe_divide(player_stats.total_shots, team_stats.team_total_shots) as share_of_team_shots
       , safe_divide(player_stats.total_passes, team_stats.team_total_passes) as share_of_team_passes
+      , safe_divide(player_stats.total_progressive_passes, team_stats.team_total_progressive_passes) as share_of_team_progression
       
       -- Ratios Globales de Temporada
       , safe_divide(player_stats.total_goals, player_stats.total_shots) as global_conversion_rate
