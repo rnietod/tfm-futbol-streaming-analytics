@@ -1,0 +1,98 @@
+version: 2
+
+models:
+  - name: stg_events
+    description: "Tabla transaccional base de eventos aplanados desde el json crudo. Una fila por cada evento del partido."
+    columns:
+      - name: file_name
+        description: "Nombre del archivo JSON origen."
+      - name: league
+        description: "Nombre de la liga."
+      - name: season
+        description: "Temporada del partido."
+      - name: ingested_at
+        description: "Timestamp de ingestión."
+      - name: match_id
+        description: "ID único del partido (Opta)."
+      - name: match_description
+        description: "Descripción del partido (Local vs Visitante)."
+      - name: match_date
+        description: "Fecha local del partido."
+      - name: competition_id
+        description: "ID de la competición."
+      - name: competition_name
+        description: "Nombre de la competición."
+      - name: event_key
+        description: "PK Global. Hash MD5 generado a partir de CONCAT(match_id, event_id) para garantizar unicidad universal."
+      - name: event_id
+        description: "PK. ID único del evento."
+      - name: event_index_in_match
+        description: "Índice secuencial del evento en el partido."
+      - name: type_id
+        description: "ID numérico del tipo de evento."
+      - name: period_id
+        description: "Periodo del partido (1, 2, etc.)."
+      - name: minute
+        description: "Minuto del evento."
+      - name: second
+        description: "Segundo del evento."
+      - name: event_timestamp
+        description: "Timestamp exacto del evento."
+      - name: outcome
+        description: "Resultado del evento (1=Éxito, 0=Fallo)."
+      - name: location_x
+        description: "Coordenada X inicial (0-100)."
+      - name: location_y
+        description: "Coordenada Y inicial (0-100)."
+      - name: team_id
+        description: "ID del equipo que realiza la acción."
+      - name: player_id
+        description: "ID del jugador que realiza la acción."
+      - name: player_name
+        description: "Nombre del jugador."
+      - name: is_key_pass
+        description: "Flag si es pase clave."
+      - name: is_assist
+        description: "Flag si es asistencia."
+  
+  - name: stg_event_qualifiers
+    description: "Tabla vertical de detalles (qualifiers). Relación 1:N con eventos."
+    columns:
+      - name: match_id
+        description: "FK. ID del partido."
+      - name: event_id
+        description: "FK. ID del evento padre."
+      - name: file_name
+        description: "Nombre del archivo origen."
+      - name: qualifier_instance_id
+        description: "PK. ID único de la instancia del qualifier."
+      - name: qualifier_type_id
+        description: "ID del tipo de qualifier (cruzar con diccionario)."
+      - name: qualifier_value
+        description: "Valor del qualifier (puede ser nulo)."
+
+  - name: stg_ref_event_types
+    description: "Diccionario maestro de tipos de evento."
+    columns:
+      - name: event_type_id
+        description: "PK. ID numérico del tipo de evento."
+      - name: event_type_name
+        description: "Nombre legible del evento."
+      - name: event_description
+        description: "Descripción detallada del evento."
+
+  - name: stg_ref_qualifier_types
+    description: "Diccionario maestro de tipos de qualifiers."
+    columns:
+      - name: qualifier_type_id
+        description: "PK. ID numérico del qualifier."
+      - name: qualifier_type_name
+        description: "Nombre legible del qualifier."
+      - name: qualifier_values_description
+        description: "Descripción de los valores posibles para este qualifier."
+      - name: qualifier_definition
+        description: "Definición detallada del significado."
+      - name: qualifier_category
+        description: "Categoría del qualifier."
+      - name: associated_event_type
+        description: "Tipo de evento asociado."

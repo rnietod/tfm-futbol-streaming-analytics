@@ -1,0 +1,50 @@
+version: 2
+
+models:
+  - name: int_game_state
+    description: "Lógica intermedia para calcular el marcador en tiempo real. Asigna a cada evento el estado del partido (Ganando, Perdiendo, Empatando) en ese instante exacto."
+    columns:
+      - name: match_id
+        description: "FK. Identificador único del partido."
+      - name: event_id
+        description: "PK. Identificador único del evento."
+      - name: current_team_score
+        description: "Goles acumulados por el equipo que realiza la acción hasta ese momento."
+      - name: current_opponent_score
+        description: "Goles acumulados por el equipo rival hasta ese momento."
+      - name: game_state_label
+        description: "Estado del marcador desde la perspectiva del equipo que realiza el evento: 'Winning', 'Losing', 'Drawing'."
+
+  - name: int_match_metadata
+    description: "Tabla intermedia que calcula la duración y metadatos temporales de cada partido."
+    columns:
+      - name: match_id
+        description: "Identificador único del partido (FK)."
+      - name: minutes_played_global
+        description: "Duración total del partido calculada desde el primer evento hasta el último."
+      - name: effective_minutes
+        description: "Minutos de tiempo efectivo de juego. Actualmente calculado igual al global, pendiente de integración con fuente externa."
+
+  - name: int_player_match_stats
+    description: "Calculadora de estadísticas por partido y estado (Game State). Normaliza métricas a P90 basándose en la duración de ese estado en el partido."
+    columns:
+      - name: game_state_label
+        description: "Contexto: Winning, Losing, Drawing."
+      - name: minutes_in_state_approx
+        description: "Minutos aproximados que el jugador pasó en este estado durante el partido."
+      - name: goals_p90
+        description: "Proyección de goles a 90 minutos dentro de este contexto específico."
+      - name: progressive_passes_p90
+        description:
+
+  - name: int_pass_metrics
+    description: "Tabla calculada con métricas avanzadas de pase. Determina si un pase es 'Progresivo' basándose en la ganancia de distancia hacia la portería."
+    columns:
+      - name: match_id
+        description: "FK. ID del partido."
+      - name: event_id
+        description: "PK. ID del evento de pase."
+      - name: is_progressive_pass
+        description: "Flag booleano. Indica si el pase acercó el balón significativamente a la portería rival o rompió líneas defensivas."
+      - name: dist_gained_towards_goal
+        description: "Distancia neta (en unidades de campo) que el balón se acercó al centro de la portería."

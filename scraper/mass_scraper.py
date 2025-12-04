@@ -90,7 +90,7 @@ def extract_match_data(driver, match_url):
         handle_cookies(driver)
 
         # Espera aleatoria para simular humano y dar tiempo a la carga de red
-        time.sleep(random.uniform(5.0, 8.0))
+        time.sleep(random.uniform(1.0, 3.0))
 
         # Buscar en el tráfico capturado
         for request in driver.requests:
