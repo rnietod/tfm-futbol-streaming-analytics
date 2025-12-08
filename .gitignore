@@ -6,3 +6,13 @@ __pycache__/
 .DS_Store
 .vscode/
 
+# ==========================
+# FRONTEND (WEB-CLIENT)
+# ==========================
+web-client/node_modules
+web-client/dist
+web-client/build
+web-client/.env
+web-client/.env.local
+web-client/.DS_Store
+web-client/coverage
