@@ -13,7 +13,7 @@ PITCH_WIDTH = 68.0
 # Si los equipos salen en el lado equivocado -> Cambia INVERT_X
 # Si el lateral derecho sale arriba (donde el izquierdo) -> Cambia INVERT_Y
 INVERT_X = False  
-INVERT_Y = False  # Cambiado a False para probar la corrección del Lateral
+INVERT_Y = True  # Cambiado a False para probar la corrección del Lateral
 
 # --- SUAVIZADO ---
 INTERPOLATION_STEPS = 2 
