@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.data.redis_client import get_redis_connection
 import asyncio
 import json
+import math
 
 app = FastAPI()
 
@@ -17,6 +18,24 @@ app.add_middleware(
 
 redis_conn = get_redis_connection()
 
+# ==========================================
+# 🛡️ EL ESCUDO ANTI-NAN (Sanitizer)
+# ==========================================
+def clean_nans(obj):
+    """
+    Recorre recursivamente cualquier objeto (lista, dict, valor).
+    Si encuentra un float('nan') o float('inf'), lo convierte a None.
+    Esto hace que Python genere 'null' en el JSON, que es válido para JS.
+    """
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+    elif isinstance(obj, dict):
+        return {k: clean_nans(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [clean_nans(v) for v in obj]
+    return obj
+
 @app.get("/")
 def read_root():
     return {"status": "TACTIX API Online 🟢"}
@@ -24,8 +43,7 @@ def read_root():
 @app.get("/match/{match_id}/metadata")
 def get_match_metadata(match_id: str):
     """
-    Endpoint para obtener la alineación inicial y configuración del partido.
-    El Frontend llama a esto UNA vez al cargar la página.
+    Endpoint para obtener la alineación inicial.
     """
     if not redis_conn:
         return {"error": "Redis no conectado"}
@@ -34,57 +52,60 @@ def get_match_metadata(match_id: str):
     data = redis_conn.get(key)
     
     if data:
-        return json.loads(data)
+        json_data = json.loads(data)
+        # 🛡️ Blindaje también aquí por si la metadata tiene basura
+        return clean_nans(json_data)
+        
     return {"error": "Metadata no encontrada (¿Enviaste la alineación desde el Dashboard?)"}
 
 @app.websocket("/ws/match/{match_id}")
 async def websocket_endpoint(websocket: WebSocket, match_id: str):
     """
     Tubería de datos en tiempo real.
-    Combina Tracking (Alta frecuencia) + Eventos (Baja frecuencia).
     """
     await websocket.accept()
     print(f"🟢 Cliente conectado al partido: {match_id}")
     
-    # 1. Suscribirse al Canal de Eventos (Push)
-    # Esto nos avisa inmediatamente cuando hay un gol o tarjeta
+    # Suscribirse al Canal de Eventos
     pubsub = redis_conn.pubsub()
     pubsub.subscribe(f"match:{match_id}:events")
     
     try:
         while True:
-            # --- A. GESTIÓN DE TRACKING (Polling Rápido) ---
-            # Leemos el último frame disponible en la memoria RAM
+            # --- A. TRACKING (Polling) ---
             tracking_raw = redis_conn.get(f"match:{match_id}:tracking")
             
             if tracking_raw:
                 track_data = json.loads(tracking_raw)
                 
-                # Enviamos al Frontend etiquetado como "tracking"
-                # El frontend usará esto para mover los puntos en el mapa
+                # 🛡️ Blindaje antes de enviar
+                safe_payload = clean_nans(track_data)
+                
                 await websocket.send_json({
                     "type": "tracking",
-                    "payload": track_data 
+                    "payload": safe_payload 
                 })
 
-            # --- B. GESTIÓN DE EVENTOS (Lectura de Cola) ---
-            # Verificamos si Redis nos ha gritado algún evento nuevo
+            # --- B. EVENTOS (Push) ---
             message = pubsub.get_message(ignore_subscribe_messages=True)
             
             if message and message['type'] == 'message':
                 event_data = json.loads(message['data'])
                 
-                print(f"⚡ Enviando evento al frontend: {event_data.get('type_name')}")
+                # Log de control
+                evt_name = event_data.get('event_type_name', 'Evento')
+                minute = event_data.get('minute', '?')
+                print(f"⚡ Enviando: {evt_name} ({minute}')")
                 
-                # Enviamos al Frontend etiquetado como "event"
-                # El frontend usará esto para añadirlo a la lista de la izquierda
+                # 🛡️ Blindaje antes de enviar (Aquí es donde solía fallar)
+                safe_payload = clean_nans(event_data)
+                
                 await websocket.send_json({
                     "type": "event",
-                    "payload": event_data
+                    "payload": safe_payload
                 })
 
-            # Pequeña pausa técnica para dar aire a la CPU
-            # (Tracking va a 25fps = 0.04s, así que 0.01s es seguro para no perder frames)
+            # Pausa técnica para no saturar CPU
             await asyncio.sleep(0.01)
 
     except WebSocketDisconnect:

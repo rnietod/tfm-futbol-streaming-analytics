@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import FootballPitch from './components/FootballPitch'
 import tactixLogo from './assets/tactix-live.png'
 
@@ -11,72 +11,71 @@ const formatTime = (fullTimestamp) => {
   } catch (e) { return "00:00:00"; }
 };
 
-// --- COMPONENTES UI ---
+// --- COMPONENTE: EVENT FEED (Blindado contra nulos) ---
 const EventFeed = ({ events = [] }) => {
-  // Función auxiliar para encontrar valores sin importar el nombre de la columna en el CSV
-  const getSafeValue = (obj, keys, defaultVal = "") => {
-    if (!obj) return defaultVal;
-    for (const key of keys) {
-      if (obj[key] !== undefined && obj[key] !== null) return obj[key];
-    }
-    return defaultVal;
+
+  const formatMatchTime = (minute) => {
+    // Seguridad: Si viene null, undefined o texto raro, se convierte a 0
+    const minVal = parseInt(minute) || 0;
+    const minStr = String(minVal).padStart(2, '0');
+    return `('${minStr})`;
+  };
+
+  const getEventStyle = (typeName) => {
+    // Seguridad: Convertir a string para evitar crash si es null/object
+    const typeLower = String(typeName || "evento").toLowerCase();
+    
+    if (typeLower.includes("goal")) return { icon: "⚽", color: "text-cyber-green font-bold text-base" };
+    if (typeLower.includes("yellow")) return { icon: "🟨", color: "text-yellow-400" };
+    if (typeLower.includes("red")) return { icon: "🟥", color: "text-red-600 font-bold" };
+    if (typeLower.includes("sub")) return { icon: "🔄", color: "text-cyber-neon" };
+    if (typeLower.includes("foul")) return { icon: "❌", color: "text-orange-400" };
+    if (typeLower.includes("shot")) return { icon: "🎯", color: "text-blue-400" };
+    if (typeLower.includes("corner")) return { icon: "🚩", color: "text-purple-400" };
+    
+    return { icon: "🔹", color: "text-cyber-text" };
   };
 
   return (
-    <div className="bg-cyber-panel/90 border-l-2 border-cyber-neon h-full p-4 overflow-y-auto rounded-r-lg shadow-lg relative backdrop-blur-md">
+    <div className="bg-cyber-panel/90 border-l-2 border-cyber-neon h-full min-h-[300px] flex flex-col p-4 rounded-r-lg shadow-lg relative backdrop-blur-md">
       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyber-neon to-transparent opacity-50"></div>
       
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 shrink-0">
         <h3 className="text-cyber-neon font-bold tracking-widest text-sm">EVENT FEED</h3>
         <span className="text-[10px] text-gray-500 bg-black/50 px-2 py-1 rounded">
           {events.length}
         </span>
       </div>
       
-      <ul className="space-y-3 text-sm">
+      <ul className="space-y-3 text-sm overflow-y-auto flex-1 pr-2">
         {events.map((evt, idx) => {
-          // 1. INTENTAR CAZAR EL TIPO DE EVENTO
-          // Buscamos: 'type_name', 'Type', 'Event Type', 'Event', 'type'
-          const rawType = getSafeValue(evt, ['type_name', 'Type', 'type', 'Event Type', 'Event', 'event_type'], "EVENTO");
-          
-          // 2. INTENTAR CAZAR EL JUGADOR
-          // Buscamos: 'player_name', 'Player', 'Player Name', 'player', 'From', 'Actor'
-          const rawPlayer = getSafeValue(evt, ['player_name', 'Player', 'Player Name', 'player', 'From'], "");
-          
-          // 3. INTENTAR CAZAR EL EQUIPO
-          const rawTeam = getSafeValue(evt, ['team_name', 'Team', 'Team Name', 'team'], "");
-          
-          // 4. TIEMPO
-          const rawTime = getSafeValue(evt, ['display_time', 'timestamp', 'Time', 'time', 'game_time'], "00:00");
+          // BLINDAJE TOTAL DE DATOS
+          // Buscamos las claves correctas (event_type_name) y tenemos fallbacks
+          const rawType = evt.event_type_name || evt.type_name || evt.Type || "EVENTO";
+          const rawPlayer = evt.player_name || evt.Player || "";
+          const rawMinute = evt.minute || evt.Time || 0;
 
-          // Iconos y colores según el texto encontrado
-          const typeLower = String(rawType).toLowerCase();
-          let icon = "🔹";
-          let colorClass = "text-cyber-text";
-
-          if (typeLower.includes("goal")) { icon = "⚽"; colorClass = "text-cyber-green font-bold text-base"; }
-          else if (typeLower.includes("yellow")) { icon = "🟨"; colorClass = "text-yellow-400"; }
-          else if (typeLower.includes("red")) { icon = "🟥"; colorClass = "text-red-600 font-bold"; }
-          else if (typeLower.includes("sub")) { icon = "🔄"; colorClass = "text-cyber-neon"; }
-          else if (typeLower.includes("foul")) { icon = "❌"; colorClass = "text-orange-400"; }
-          else if (typeLower.includes("shot")) { icon = "🎯"; colorClass = "text-blue-400"; }
-          else if (typeLower.includes("corner")) { icon = "🚩"; colorClass = "text-purple-400"; }
+          const { icon, color } = getEventStyle(rawType);
+          const timeFormatted = formatMatchTime(rawMinute);
 
           return (
-            <li key={idx} className="flex items-start gap-3 border-b border-gray-800 pb-2 animate-pulse-once hover:bg-white/5 p-1 rounded transition">
-              <span className="font-mono text-gray-500 text-xs mt-1 min-w-[40px]">
-                {rawTime.toString().split('.')[0]}
+            <li key={idx} className="flex items-center gap-3 border-b border-gray-800 pb-2 animate-pulse hover:bg-white/5 p-1 rounded transition">
+              <span className="text-lg leading-none w-6 text-center" role="img" aria-label={rawType}>
+                {icon}
               </span>
-              <div className="flex-1">
-                <div className={`flex items-center gap-2 ${colorClass}`}>
-                  <span>{icon}</span>
-                  <span className="uppercase text-xs font-bold">{rawType}</span>
+              <span className="font-mono text-gray-500 text-xs font-bold min-w-[32px]">
+                {timeFormatted}
+              </span>
+              <div className="flex flex-col flex-1 leading-tight overflow-hidden">
+                <div className="flex items-center gap-2">
+                  <span className={`uppercase text-xs font-bold tracking-wide truncate ${color}`}>
+                    {rawType}
+                  </span>
                 </div>
                 {rawPlayer && (
-                  <div className="text-gray-300 text-xs font-bold mt-0.5">{rawPlayer}</div>
-                )}
-                {rawTeam && (
-                  <div className="text-gray-500 text-[10px]">{rawTeam}</div>
+                  <span className="text-gray-300 text-xs font-semibold mt-0.5 truncate">
+                    {rawPlayer}
+                  </span>
                 )}
               </div>
             </li>
@@ -84,9 +83,9 @@ const EventFeed = ({ events = [] }) => {
         })}
         
         {events.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-32 text-gray-600 gap-2">
+          <div className="flex flex-col items-center justify-center h-full text-gray-600 gap-2 min-h-[100px]">
             <span className="text-2xl opacity-20">📭</span>
-            <span className="text-xs italic">Esperando datos del partido...</span>
+            <span className="text-xs italic">Esperando datos...</span>
           </div>
         )}
       </ul>
@@ -94,6 +93,7 @@ const EventFeed = ({ events = [] }) => {
   )
 }
 
+// --- COMPONENTE: TICKER ---
 const GhostMateTicker = () => (
   <div className="bg-cyber-panel/90 border-l-2 border-cyber-red h-full p-4 rounded-r-lg shadow-lg backdrop-blur-md">
     <h3 className="text-cyber-text font-bold mb-4 tracking-widest text-sm uppercase">GHOST MATE (LIVE)</h3>
@@ -106,6 +106,7 @@ const GhostMateTicker = () => (
   </div>
 )
 
+// --- COMPONENTE: CONTROLES ---
 const PlaybackControls = ({ currentTime, isLive, onSeek, onToggleLive }) => (
   <div className="bg-cyber-panel/90 border-t border-cyber-neon p-4 flex items-center gap-6 rounded-t-xl mx-4 backdrop-blur-md">
     <div className="font-mono text-2xl text-cyber-neon w-32 text-center tabular-nums">
@@ -126,9 +127,6 @@ const PlaybackControls = ({ currentTime, isLive, onSeek, onToggleLive }) => (
         min="0" 
         max="100" 
         defaultValue={100} 
-        // Si no estamos en vivo, el valor debería reflejar la posición relativa
-        // Nota: Para un slider real perfecto necesitamos saber el "total" de frames esperados, 
-        // pero para DVR live, 100% es "ahora".
         onChange={(e) => onSeek(e.target.value)}
         className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyber-neon hover:accent-cyber-green"
       />
@@ -145,26 +143,19 @@ function App() {
   const [eventsList, setEventsList] = useState([]);
   const [latestEvent, setLatestEvent] = useState(null);
   const [status, setStatus] = useState("OFFLINE");
-  
-  // NUEVO: Mapa de Jugadores (ID -> Datos)
   const [playerMap, setPlayerMap] = useState({});
 
   const ws = useRef(null);
-
-  // AUMENTADO: 60,000 frames (aprox 100 min de partido a 10Hz)
   const MAX_BUFFER = 60000; 
 
-  // 1. Cargar Alineación al inicio
+  // 1. Cargar Alineación
   useEffect(() => {
     fetch('http://127.0.0.1:8000/match/test_match/metadata')
       .then(res => res.json())
       .then(data => {
         if (data && !data.error) {
-          // Convertir lista o objeto raw en un Mapa rápido por ID
           const map = {};
-          // Detectar estructura (lista plana, objeto 'players', o diccionario de IDs)
           const players = Array.isArray(data) ? data : (data.players || Object.values(data));
-          
           if (Array.isArray(players)) {
             players.forEach(p => {
               const pid = String(p.id || p.player_id);
@@ -175,17 +166,23 @@ function App() {
               };
             });
             setPlayerMap(map);
-            console.log("✅ Alineación cargada:", Object.keys(map).length, "jugadores");
+            console.log("✅ Alineación cargada");
           }
         }
       })
       .catch(err => console.warn("Esperando metadata...", err));
   }, []);
 
-  // 2. WebSocket
+  // 2. WebSocket (Con Diagnóstico)
   useEffect(() => {
+    console.log("🔌 Conectando WebSocket...");
     ws.current = new WebSocket("ws://127.0.0.1:8000/ws/match/test_match");
-    ws.current.onopen = () => setStatus("ONLINE");
+    
+    ws.current.onopen = () => {
+      console.log("✅ WebSocket Conectado");
+      setStatus("ONLINE");
+    };
+    
     ws.current.onclose = () => setStatus("OFFLINE");
 
     ws.current.onmessage = (e) => {
@@ -202,19 +199,26 @@ function App() {
         } 
         else if (msg.type === "event") {
           const newEvent = msg.payload;
+          
           if (newEvent) {
+            console.log("📩 Evento Recibido:", newEvent.event_type_name); // LOG PARA VERIFICAR
+            
             setLatestEvent(newEvent);
-            setEventsList(prev => [newEvent, ...prev].slice(0, 50));
+            setEventsList(prev => {
+                // Mantiene los últimos 50 eventos
+                return [newEvent, ...prev].slice(0, 50);
+            });
+            
             setTimeout(() => setLatestEvent(null), 2000);
           }
         }
-      } catch (err) { console.error(err); }
+      } catch (err) { console.error("Error WS:", err); }
     };
 
     return () => ws.current?.close();
   }, []);
 
-  // 3. Loop de visualización (Sincroniza UI con el buffer)
+  // 3. Loop de Visualización
   useEffect(() => {
     if (isLive) {
       setPlaybackIndex(history.length - 1);
@@ -260,7 +264,8 @@ function App() {
       {/* MAIN */}
       <div className="flex-1 grid grid-cols-12 gap-6 p-6 relative z-10">
         <div className="col-span-3 flex flex-col gap-6">
-          <div className="flex-1 min-h-0">
+          <div className="flex-1 min-h-0 flex flex-col"> 
+             {/* PASAMOS LA LISTA DE EVENTOS */}
              <EventFeed events={eventsList} />
           </div>
           <div className="h-72"><GhostMateTicker /></div>
@@ -274,7 +279,7 @@ function App() {
               <FootballPitch 
                 matchState={currentFrame} 
                 latestEvent={latestEvent}
-                playerMap={playerMap} // <--- PASAMOS EL MAPA AL PINTOR
+                playerMap={playerMap} 
                 width={1100} 
                 height={700} 
               />

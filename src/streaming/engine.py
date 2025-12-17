@@ -77,76 +77,122 @@ class SimulationEngine:
 
     def load_data(self):
         self.status_message = "Cargando datos..."
-        self._log("Iniciando carga de archivos...")
+        self._log("Iniciando carga y limpieza de archivos...")
         self.tracking_stream = []
         self.eventing_stream = []
         
         try:
-            # Usamos las rutas absolutas calculadas en __init__
             track_file = os.path.join(self.data_dir, "tracking_file.jsonl")
             ev_file = os.path.join(self.data_dir, "eventing_file.csv")
             ids_file = os.path.join(self.data_dir, "ids_tracking.json")
 
-            # Verificación de existencia para dar un error claro
+            # ==========================================
+            # 1. IDs (Metadatos JSON) - Extracción Quirúrgica
+            # ==========================================
             if not os.path.exists(ids_file):
                 raise FileNotFoundError(f"No encuentro: {ids_file}")
 
-            # 1. IDs (Alineación)
             with open(ids_file, 'r', encoding='utf-8') as f:
-                self.raw_ids_data = json.load(f)
+                raw_json = json.load(f)
                 
-                # Mapeo de IDs para uso interno (Engine)
-                data = self.raw_ids_data
-                # Detectamos si es la lista plana o el objeto partido
-                if isinstance(data, dict) and 'players' in data:
-                    iterator = data['players']
-                elif isinstance(data, dict):
-                    iterator = data.values()
-                else:
-                    iterator = data # Asumimos lista
-                
-                if iterator:
-                    for item in iterator:
-                        if isinstance(item, dict): 
-                            pid = item.get('id') or item.get('player_id')
-                            if pid: self.ids_map[str(pid)] = item
+                # Construimos un objeto limpio siguiendo tus JSONPaths
+                clean_metadata = {
+                    "home_team": {
+                        "id": raw_json.get("home_team", {}).get("id"),                 # $.home_team.id
+                        "short_name": raw_json.get("home_team", {}).get("short_name")  # $.home_team.short_name
+                    },
+                    "away_team": {
+                        "id": raw_json.get("away_team", {}).get("id"),                 # $.away_team.id (corregido typo awey)
+                        "short_name": raw_json.get("away_team", {}).get("short_name")  # $.away_team.short_name
+                    },
+                    "players": []
+                }
 
-            # 2. TRACKING
-            if not os.path.exists(track_file): raise FileNotFoundError(f"Falta {track_file}")
+                # Procesamos el array de jugadores
+                # Path base: $.players
+                raw_players = raw_json.get("players", [])
+                for p in raw_players:
+                    clean_player = {
+                        "short_name": p.get("short_name"),                    # $.players[x].short_name
+                        "id": p.get("id"),                                    # $.players[x].id
+                        "team_id": p.get("team_id"),                          # $.players[x].team_id
+                        "number": p.get("number"),                            # $.players[x].number
+                        "role": p.get("player_role", {}).get("acronym")       # $.players[x].player_role.acronym
+                    }
+                    clean_metadata["players"].append(clean_player)
+                    
+                    # Actualizamos el mapa interno para el Engine
+                    if clean_player["id"]:
+                        self.ids_map[str(clean_player["id"])] = clean_player
+
+                self.raw_ids_data = clean_metadata
+
+            # ==========================================
+            # 2. TRACKING (Sin cambios mayores)
+            # ==========================================
+            if not os.path.exists(track_file): 
+                raise FileNotFoundError(f"Falta {track_file}")
             
             t_df = pd.read_json(track_file, lines=True)
             t_df['timestamp'] = t_df['timestamp'].astype(str)
             t_df['game_time'] = t_df['timestamp'].apply(self._time_to_seconds)
-            
             if 'period' not in t_df.columns: t_df['period'] = 1
-            t_df['period'] = t_df['period'].fillna(1).astype(int)
-
+            
             self.tracking_stream = t_df.to_dict('records')
             self.total_game_time = t_df['game_time'].max() if not t_df['game_time'].isna().all() else 1
 
-            # 3. EVENTING
+            # ==========================================
+            # 3. EVENTING (CSV) - Minería de Datos
+            # ==========================================
             if os.path.exists(ev_file):
                 e_df = pd.read_csv(ev_file, sep=None, engine='python')
-                t_col = next((c for c in ['game_time_seconds', 'timestamp', 'time'] if c in e_df.columns), None)
-                p_col = next((c for c in ['period', 'period_id', 'half'] if c in e_df.columns), None)
 
-                if t_col:
-                    e_df[t_col] = e_df[t_col].astype(str)
-                    e_df['game_time'] = e_df[t_col].apply(self._time_to_seconds)
-                    e_df = e_df.dropna(subset=['game_time'])
-                    e_df['period'] = e_df[p_col].fillna(1).astype(int) if p_col else 1
-                    e_df = e_df.sort_values(by=['period', 'game_time'])
-                    self.eventing_stream = e_df.to_dict('records')
+                # Lista exacta de columnas solicitadas
+                target_columns = [
+                    "timestamp", "period", "minute", "event_type_name", 
+                    "team_name", "player_name", "location_x", "location_y", 
+                    "end_location_y", "end_location_x", "end_location_z", 
+                    "pass_recipient_name", "pass_length", "pass_angle", 
+                    "pass_height_name", "pass_cross", "pass_cut_back", 
+                    "pass_switch", "body_part_name"
+                ]
 
-            self.status_message = f"Datos Listos: {len(self.tracking_stream)} frames"
-            self._log("Carga completada exitosamente.")
+                # 1. Validar existencia (Fail Fast si faltan las críticas)
+                critical_cols = ["timestamp", "period"]
+                missing_critical = [c for c in critical_cols if c not in e_df.columns]
+                if missing_critical:
+                      raise ValueError(f"Faltan columnas críticas en CSV: {missing_critical}")
+
+                # 2. Calcular tiempo para el motor (game_time)
+                e_df['game_time'] = e_df['timestamp'].apply(self._time_to_seconds)
+                e_df = e_df.dropna(subset=['game_time'])
+                
+                # 3. Filtrar y rellenar columnas faltantes (para no romper si falta una opcional)
+                # Si una columna opcional (ej: pass_cross) no viene, la creamos con None
+                for col in target_columns:
+                    if col not in e_df.columns:
+                        e_df[col] = None 
+                
+                # 4. Seleccionar SOLO las columnas de interés + game_time
+                final_cols = target_columns + ['game_time']
+                e_df = e_df[final_cols]
+
+                # 5. Ordenar para el streaming
+                e_df = e_df.sort_values(by=['period', 'game_time'])
+                
+                e_df = e_df.where(pd.notnull(e_df), None)
+                
+                self.eventing_stream = e_df.to_dict('records')
+
+            self.status_message = f"Datos Pulidos: {len(self.tracking_stream)} frames | {len(self.eventing_stream)} eventos"
+            self._log("Carga completada y datos estructurados.")
             return True
 
         except Exception as e:
             error_msg = f"Error Carga: {str(e)}"
             self.status_message = error_msg
             self._log(f"❌ {error_msg}")
-            print(f"❌ ERROR DETALLADO EN ENGINE: {e}") # Para ver en la terminal
+            print(f"❌ ERROR DETALLADO: {e}")
             self.errors += 1
             return False
 
@@ -191,54 +237,95 @@ class SimulationEngine:
         event_idx = 0
         total_track = len(self.tracking_stream)
         total_event = len(self.eventing_stream)
-        last_valid_game_time = 0.0
         
-        FRAME_DURATION = 0.1 # 100ms si es null
+        # Control de Tiempo y Delta
+        last_tracking_time = None  # Para calcular el sleep entre frames
+        FRAME_DURATION = 0.1       # Fallback si no hay timestamp
+        
+        # Control de Sincronización Eventos (Absoluto vs Relativo)
+        current_period_start_time = 0.0
+        last_processed_period = 1
 
-        self._log("▶️ Streaming iniciado...")
+        self._log("▶️ Streaming iniciado (Sincronizado)...")
 
         while self.running and track_idx < total_track:
             start_proc = time.time()
             
+            # 1. Obtener Frame de Tracking
             track_record = self.tracking_stream[track_idx]
-            current_game_time = track_record.get('game_time')
+            current_game_time_abs = track_record.get('game_time') # Tiempo ABSOLUTO (e.g., 2800s)
             p_val = track_record.get('period')
             
-            # Lógica de tiempo
-            if pd.isna(current_game_time):
-                self.status_message = f"WAITING (Frame {track_idx})"
+            # --- LÓGICA DE TIEMPO Y SLEEP (Tu requerimiento de 0.1s / 0.05s) ---
+            if pd.isna(current_game_time_abs):
+                # Si no hay tiempo, usamos velocidad crucero por defecto
                 wait = FRAME_DURATION
+                self.status_message = f"WAITING (Frame {track_idx})"
             else:
-                self.status_message = f"LIVE P{p_val} 🔴"
-                self.current_time = current_game_time
+                self.current_time = current_game_time_abs
                 self.current_period = int(p_val) if pd.notna(p_val) else 1
-                
-                delta = current_game_time - last_valid_game_time
-                wait = delta if (0 <= delta < 5.0) else FRAME_DURATION
-                last_valid_game_time = current_game_time
+                self.status_message = f"LIVE P{self.current_period} 🔴"
 
+                # Detectar cambio de periodo para resetear la referencia de eventos
+                if self.current_period != last_processed_period:
+                    current_period_start_time = current_game_time_abs
+                    last_processed_period = self.current_period
+                    self._log(f"🔄 Cambio de Periodo detectado: P{self.current_period} inicia en t={current_game_time_abs}")
+
+                # Calculamos el DELTA exacto con el frame anterior
+                if last_tracking_time is not None:
+                    delta = current_game_time_abs - last_tracking_time
+                    # Protección contra saltos gigantes o negativos (ej: pausas largas o errores)
+                    if 0 <= delta < 5.0: 
+                        wait = delta
+                    else: 
+                        wait = FRAME_DURATION
+                else:
+                    wait = 0 # Primer frame sale disparado
+
+                last_tracking_time = current_game_time_abs
+
+            # Aplicar espera (Sleep) ajustada por el multiplicador de velocidad
             if wait > 0:
                 time.sleep(wait / self.speed_multiplier)
 
-            # Eventos
+            # --- LÓGICA DE EVENTOS (Tu requerimiento de sincronización) ---
+            # Calculamos el tiempo RELATIVO del tracking para compararlo con el evento
+            # Si estamos en P1 (inicio 0): 10.5 - 0 = 10.5
+            # Si estamos en P2 (inicio 2700): 2710.5 - 2700 = 10.5 -> COINCIDE con evento P2
+            current_time_rel = self.current_time - current_period_start_time
+
             while event_idx < total_event:
                 event_record = self.eventing_stream[event_idx]
-                ev_time = event_record['game_time']
+                ev_time_rel = event_record['game_time'] # Esto viene reiniciado (0-45)
                 ev_period = event_record['period']
 
+                # CASO 1: Eventos atrasados (de periodos anteriores o segundos previos)
+                # Se envían inmediatamente para "ponerse al día"
                 if ev_period < self.current_period:
                     self._publish_event(event_record)
                     event_idx += 1
-                elif ev_period == self.current_period and ev_time <= (self.current_time + 0.05):
-                    self._publish_event(event_record)
-                    event_idx += 1
+                
+                # CASO 2: Eventos del periodo actual
+                # Comparamos peras con peras (Tiempo Relativo vs Tiempo Relativo)
+                elif ev_period == self.current_period:
+                    # Usamos un margen pequeño (0.05) para asegurar que no se quede atrás por milisegundos
+                    if ev_time_rel <= (current_time_rel + 0.05):
+                        self._publish_event(event_record)
+                        event_idx += 1
+                    else:
+                        # El evento es futuro, paramos de buscar en la lista
+                        break
+                
+                # CASO 3: Eventos de periodos futuros (no deberían estar aquí por el sort, pero por seguridad)
                 else:
                     break 
 
-            # Tracking
+            # 3. Publicar Tracking
             self._publish_tracking(track_record)
             track_idx += 1
             
+            # Latencia real de procesamiento
             self.latency_ms = (time.time() - start_proc) * 1000
 
         self.running = False
@@ -265,7 +352,7 @@ class SimulationEngine:
             self.total_events += 1
             self.metrics['eventing']['count'] += 1
             
-            evt_type = payload.get('type_name') or payload.get('type')
+            evt_type = payload.get('event_type_name') or payload.get('type')
             self.sent_eventing_log.append({
                 'Time': f"{self.current_time:.1f}", 
                 'Type': evt_type,
