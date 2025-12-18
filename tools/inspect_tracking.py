@@ -41,7 +41,7 @@ def inspect_schema():
         t_df['game_time'] = t_df['timestamp'].apply(_time_to_seconds)
         if 'period' not in t_df.columns:
             t_df['period'] = 1
-        
+
         # --- AQUÍ ESTÁ EL CAMBIO ---
         # Saltamos al frame 1340 donde dices que empieza la acción
         TARGET_FRAME = 1341

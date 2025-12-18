@@ -9,8 +9,7 @@ import requests
 # Asegurar path para imports
 sys.path.append(os.getcwd())
 
-
-from src.streaming.engine import SimulationEngine # noqa: E402
+from src.streaming.engine import SimulationEngine  # noqa: E402
 
 # CONFIGURACIÓN UI
 st.set_page_config(page_title="TACTIX Command Center", page_icon="🎛️", layout="wide")
@@ -132,4 +131,3 @@ with c_event:
 if engine.running:
     time.sleep(1)
     st.rerun()
-    

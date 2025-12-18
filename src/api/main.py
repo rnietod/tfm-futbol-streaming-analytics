@@ -136,7 +136,7 @@ async def websocket_endpoint(websocket: WebSocket, match_id: str):
         while True:
             # --- A. TRACKING (Polling) ---
             tracking_raw = redis_conn.get(f"match:{match_id}:tracking")
-            
+
             if tracking_raw:
                 track_data = json.loads(tracking_raw)
 

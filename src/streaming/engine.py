@@ -53,7 +53,7 @@ class SimulationEngine:
         # 2. Subimos dos niveles (src -> raiz)
         self.project_root = os.path.dirname(os.path.dirname(current_dir))
         self.data_dir = os.path.join(self.project_root, "data")
-        
+
         print(f"📂 Directorio de Datos detectado: {self.data_dir}")
 
     def _log(self, message):
@@ -193,7 +193,10 @@ class SimulationEngine:
 
                 self.eventing_stream = e_df.to_dict('records')
 
-            self.status_message = f"Datos Pulidos: {len(self.tracking_stream)} frames | {len(self.eventing_stream)} eventos"
+            self.status_message = (
+                f"Datos Pulidos: {len(self.tracking_stream)} frames | "
+                f"{len(self.eventing_stream)} eventos"
+            )
             self._log("Carga completada y datos estructurados.")
             return True
 
@@ -264,7 +267,7 @@ class SimulationEngine:
 
             # 1. Obtener Frame de Tracking
             track_record = self.tracking_stream[track_idx]
-            current_game_time_abs = track_record.get('game_time') # Tiempo ABSOLUTO (e.g., 2800s)
+            current_game_time_abs = track_record.get('game_time')  # Tiempo ABSOLUTO (e.g., 2800s)
             p_val = track_record.get('period')
 
             # --- LÓGICA DE TIEMPO Y SLEEP (Tu requerimiento de 0.1s / 0.05s) ---
@@ -281,7 +284,10 @@ class SimulationEngine:
                 if self.current_period != last_processed_period:
                     current_period_start_time = current_game_time_abs
                     last_processed_period = self.current_period
-                    self._log(f"🔄 Cambio de Periodo detectado: P{self.current_period} inicia en t={current_game_time_abs}")
+                    self._log(
+                        f"🔄 Cambio de Periodo detectado: P{self.current_period} "
+                        f"inicia en t={current_game_time_abs}"
+                    )
 
                 # Calculamos el DELTA exacto con el frame anterior
                 if last_tracking_time is not None:
