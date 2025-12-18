@@ -1,6 +1,5 @@
 node_modules/
 venvfutbol/
-data/
 *.pyc
 __pycache__/
 .DS_Store

@@ -4,7 +4,7 @@ import pandas as pd
 import time
 import os
 import sys
-from datetime import timedelta
+import requests
 
 # Asegurar path para imports
 sys.path.append(os.getcwd())
@@ -28,6 +28,8 @@ if 'engine' not in st.session_state:
 
 engine = st.session_state.engine
 
+API_URL = "http://localhost:8000"
+
 # --- SIDEBAR ---
 with st.sidebar:
     st.title("🎛️ Controles")
@@ -37,6 +39,31 @@ with st.sidebar:
         st.rerun()
     
     st.divider()
+
+    st.markdown("### 🧨 Zona de Peligro")
+    st.caption("Borra todos los datos de Redis y reinicia el entorno.")
+
+    # Sin inputs, solo acción directa
+    if st.button("☢️ PURGAR SISTEMA COMPLETO", type="primary"):
+        try:
+            # Llamamos al nuevo endpoint global
+            response = requests.delete(f"{API_URL}/admin/reset-all")
+            
+            if response.status_code == 200:
+                st.toast("✅ Sistema reiniciado. Memoria limpia.", icon="🧹")
+                
+                # Reiniciamos también el motor local para que no siga enviando datos viejos
+                engine.stop_stream()
+                st.session_state.engine = SimulationEngine()
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error(f"Error del servidor: {response.text}")
+        except Exception as e:
+            st.error(f"No se pudo conectar con la API: {e}")
+
+    st.divider()
+
     st.markdown("### Velocidad")
     speed = st.slider("Multiplicador", 0.5, 10.0, 1.0, 0.5)
     if speed != engine.speed_multiplier:
