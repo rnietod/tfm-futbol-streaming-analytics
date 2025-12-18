@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import FootballPitch from './components/FootballPitch'
 import tactixLogo from './assets/tactix-live.png'
 
@@ -11,58 +11,129 @@ const formatTime = (fullTimestamp) => {
   } catch (e) { return "00:00:00"; }
 };
 
-// --- COMPONENTE: EVENT FEED (Blindado contra nulos) ---
+// --- COMPONENTE: EVENT FEED (Con Lógica de Doble Visualización) ---
 const EventFeed = ({ events = [] }) => {
 
+  // IDs permitidos (Whitelist)
+  const ALLOWED_IDS = [6, 16, 18, 19, 21, 22, 23, 34, 40];
+
+  // --- PROCESAMIENTO DE DATOS (The Magic Step) ---
+  const feedItems = useMemo(() => {
+    // 1. Primero filtramos por la whitelist general
+    const relevantEvents = events.filter(evt => 
+      evt.event_type_id && ALLOWED_IDS.includes(evt.event_type_id)
+    );
+
+    // 2. APLANAMIENTO Y EXPANSIÓN
+    return relevantEvents.flatMap((evt) => {
+      const typeId = evt.event_type_id;   // Ej: 16 (Shot)
+      const subTypeId = evt.type_id;      // Ej: 88 (Penalty), 26 (Goal Conceded)
+      const outcomeId = evt.outcome_id;   // Ej: 97 (Goal)
+
+      // REGLA 1: Ocultar 'Goal Conceded' del Portero
+      // (Para evitar duplicidad visual o confusión de quién marcó)
+      if (typeId === 23 && subTypeId === 26) {
+        return []; 
+      }
+
+      const itemsToRender = [];
+
+      // REGLA 2: El evento original (El Tiro, la Falta, la Parada...)
+      itemsToRender.push({
+        ...evt,
+        isVirtualGoal: false, // Marca: Es el evento de la acción
+        uniqueKey: `${evt.id}_action` // Key única para React
+      });
+
+      // REGLA 3: Si es Tiro y terminó en Gol -> Generar evento Virtual de Gol
+      if (typeId === 16 && outcomeId === 97) {
+        itemsToRender.push({
+          ...evt,
+          isVirtualGoal: true, // Marca: Es la celebración del gol
+          event_type_name: 'GOAL !!!', // Forzamos el nombre
+          uniqueKey: `${evt.id}_goal_celebration`
+        });
+      }
+
+      return itemsToRender;
+    });
+  }, [events]);
+
   const formatMatchTime = (minute) => {
-    // Seguridad: Si viene null, undefined o texto raro, se convierte a 0
     const minVal = parseInt(minute) || 0;
     const minStr = String(minVal).padStart(2, '0');
     return `('${minStr})`;
   };
 
-  const getEventStyle = (typeName) => {
-    // Seguridad: Convertir a string para evitar crash si es null/object
-    const typeLower = String(typeName || "evento").toLowerCase();
-    
-    if (typeLower.includes("goal")) return { icon: "⚽", color: "text-cyber-green font-bold text-base" };
-    if (typeLower.includes("yellow")) return { icon: "🟨", color: "text-yellow-400" };
-    if (typeLower.includes("red")) return { icon: "🟥", color: "text-red-600 font-bold" };
-    if (typeLower.includes("sub")) return { icon: "🔄", color: "text-cyber-neon" };
-    if (typeLower.includes("foul")) return { icon: "❌", color: "text-orange-400" };
-    if (typeLower.includes("shot")) return { icon: "🎯", color: "text-blue-400" };
-    if (typeLower.includes("corner")) return { icon: "🚩", color: "text-purple-400" };
-    
-    return { icon: "🔹", color: "text-cyber-text" };
+  const getEventStyle = (item) => {
+    // Si es nuestro item "Virtual" de gol, tiene prioridad absoluta
+    if (item.isVirtualGoal) {
+      return { icon: "⚽", color: "text-cyber-green font-extrabold text-lg tracking-widest glow-text drop-shadow-[0_0_5px_rgba(0,255,0,0.5)]" };
+    }
+
+    const typeId = item.event_type_id;
+    const subTypeId = item.type_id;
+    const typeLower = String(item.event_type_name || "").toLowerCase();
+
+    switch (typeId) {
+      // --- SHOTS (16) ---
+      case 16:
+        if (subTypeId === 88) return { icon: "👮", color: "text-orange-400 font-bold" }; // Penalty
+        if (subTypeId === 62) return { icon: "👟", color: "text-blue-300" };   // Free Kick
+        if (subTypeId === 87) return { icon: "💥", color: "text-gray-300" };   // Regular Shot
+        return { icon: "🎯", color: "text-blue-400" }; // Fallback Shot
+
+      // --- GOAL KEEPER (23) ---
+      case 23:
+        if (subTypeId === 32) return { icon: "✋", color: "text-yellow-200" }; // Shot Faced
+        if (subTypeId === 33) return { icon: "🧤", color: "text-green-400 font-bold" }; // Shot Saved
+        if (subTypeId === 27) return { icon: "🏃", color: "text-purple-300" }; // Keeper Sweeper
+        return { icon: "🛡️", color: "text-gray-400" }; // Fallback GK
+
+      // --- OTROS ---
+      case 6:  return { icon: "🛡️", color: "text-purple-400" }; // Block
+      case 19: return { icon: "🔄", color: "text-cyber-neon" }; // Sub
+      
+      case 21: // Foul Won
+      case 22: // Foul Committed
+        if (typeLower.includes("yellow")) return { icon: "🟨", color: "text-yellow-400" };
+        if (typeLower.includes("red")) return { icon: "🟥", color: "text-red-600 font-bold" };
+        return { icon: "❌", color: "text-orange-400" };
+
+      case 18: // Half Start
+      case 34: // Half End
+        return { icon: "⏱️", color: "text-gray-500 font-mono" };
+
+      case 40: return { icon: "🚑", color: "text-red-500" }; // Injury
+        
+      default: return { icon: "🔹", color: "text-cyber-text" };
+    }
   };
 
   return (
     <div className="bg-cyber-panel/90 border-l-2 border-cyber-neon h-full flex flex-col p-4 rounded-r-lg shadow-lg relative backdrop-blur-md overflow-hidden">
-      {/* Decoración superior */}
       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyber-neon to-transparent opacity-50"></div>
-      {/* HEADER FIJO: No debe scrollear */}
+      
       <div className="flex justify-between items-center mb-4 shrink-0 z-10">
         <h3 className="text-cyber-neon font-bold tracking-widest text-sm">EVENT FEED</h3>
         <span className="text-[10px] text-gray-500 bg-black/50 px-2 py-1 rounded border border-gray-700">
-          Total: {events.length}
+          Items: {feedItems.length}
         </span>
       </div>
       
-      {/* LISTA SCROLLEABLE */}
-      {/* Agregamos 'cyber-scrollbar' y aseguramos que ocupe el espacio restante */}
       <ul className="space-y-3 text-sm overflow-y-auto flex-1 pr-2 cyber-scrollbar">
-        {events.map((evt, idx) => {
-           // ... (toda tu lógica de renderizado de items se mantiene igual) ...
-           // Solo asegúrate de que el return del map esté aquí dentro
-           const rawType = evt.event_type_name || evt.type_name || evt.Type || "EVENTO";
-           const rawPlayer = evt.player_name || evt.Player || "";
-           const rawMinute = evt.minute || evt.Time || 0;
-           const { icon, color } = getEventStyle(rawType);
+        {feedItems.map((item) => {
+           // Usamos el item procesado (que puede ser virtual o real)
+           const rawType = item.isVirtualGoal ? "GOAL !!!" : (item.event_type_name || item.type_name || "EVENTO");
+           const rawPlayer = item.player_name || item.Player || "";
+           const rawMinute = item.minute || item.Time || 0;
+           
+           const { icon, color } = getEventStyle(item);
            const timeFormatted = formatMatchTime(rawMinute);
 
            return (
-            <li key={idx} className="flex items-center gap-3 border-b border-gray-800 pb-2 hover:bg-white/5 p-1 rounded transition group">
-              <span className="text-lg leading-none w-6 text-center group-hover:scale-110 transition-transform" role="img" aria-label={rawType}>
+            <li key={item.uniqueKey} className={`flex items-center gap-3 border-b border-gray-800 pb-2 p-1 rounded transition group ${item.isVirtualGoal ? 'bg-cyber-green/5 hover:bg-cyber-green/10' : 'hover:bg-white/5'}`}>
+              <span className={`text-lg leading-none w-6 text-center ${item.isVirtualGoal ? 'animate-bounce' : 'group-hover:scale-110'} transition-transform`} role="img">
                 {icon}
               </span>
               <span className="font-mono text-gray-500 text-xs font-bold min-w-[32px]">
@@ -73,9 +144,13 @@ const EventFeed = ({ events = [] }) => {
                   <span className={`uppercase text-xs font-bold tracking-wide truncate ${color}`}>
                     {rawType}
                   </span>
+                  {/* Etiqueta extra para Penales si no es el gol virtual */}
+                  {!item.isVirtualGoal && item.type_id === 88 && item.event_type_id === 16 && (
+                    <span className="text-[9px] border border-orange-500 text-orange-400 px-1 rounded ml-1 opacity-70">PENALTY</span>
+                  )}
                 </div>
                 {rawPlayer && (
-                  <span className="text-gray-300 text-xs font-semibold mt-0.5 truncate">
+                  <span className={`text-xs font-semibold mt-0.5 truncate ${item.isVirtualGoal ? 'text-white' : 'text-gray-300'}`}>
                     {rawPlayer}
                   </span>
                 )}
@@ -84,11 +159,10 @@ const EventFeed = ({ events = [] }) => {
           )
         })}
         
-        {/* Mensaje de estado vacío */}
-        {events.length === 0 && (
+        {feedItems.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-gray-600 gap-2 min-h-[100px]">
             <span className="text-2xl opacity-20">📭</span>
-            <span className="text-xs italic">Esperando datos del partido...</span>
+            <span className="text-xs italic">Esperando acciones...</span>
           </div>
         )}
       </ul>
@@ -202,10 +276,10 @@ function App() {
         } 
         else if (msg.type === "event") {
           const newEvent = msg.payload;
-  
+          
           if (newEvent) {
             console.log("📩 Evento Recibido:", newEvent.event_type_name);
-    
+            
             setLatestEvent(newEvent);
             setEventsList(prev => {
                 const updatedList = [newEvent, ...prev]; 

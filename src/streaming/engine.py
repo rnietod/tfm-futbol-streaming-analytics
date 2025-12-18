@@ -149,12 +149,13 @@ class SimulationEngine:
 
                 # Lista exacta de columnas solicitadas
                 target_columns = [
-                    "timestamp", "period", "minute", "event_type_name", 
+                    "timestamp", "period", "minute", "event_type_name", "event_type_id", 
                     "team_name", "player_name", "location_x", "location_y", 
                     "end_location_y", "end_location_x", "end_location_z", 
                     "pass_recipient_name", "pass_length", "pass_angle", 
                     "pass_height_name", "pass_cross", "pass_cut_back", 
-                    "pass_switch", "body_part_name"
+                    "pass_switch", "body_part_name", "outcome_id", "outcome_name",
+                    "type_id", "type_name"
                 ]
 
                 # 1. Validar existencia (Fail Fast si faltan las críticas)
