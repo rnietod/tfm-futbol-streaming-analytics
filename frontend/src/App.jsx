@@ -37,30 +37,32 @@ const EventFeed = ({ events = [] }) => {
   };
 
   return (
-    <div className="bg-cyber-panel/90 border-l-2 border-cyber-neon h-full min-h-[300px] flex flex-col p-4 rounded-r-lg shadow-lg relative backdrop-blur-md">
+    <div className="bg-cyber-panel/90 border-l-2 border-cyber-neon h-full flex flex-col p-4 rounded-r-lg shadow-lg relative backdrop-blur-md overflow-hidden">
+      {/* Decoración superior */}
       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyber-neon to-transparent opacity-50"></div>
-      
-      <div className="flex justify-between items-center mb-4 shrink-0">
+      {/* HEADER FIJO: No debe scrollear */}
+      <div className="flex justify-between items-center mb-4 shrink-0 z-10">
         <h3 className="text-cyber-neon font-bold tracking-widest text-sm">EVENT FEED</h3>
-        <span className="text-[10px] text-gray-500 bg-black/50 px-2 py-1 rounded">
-          {events.length}
+        <span className="text-[10px] text-gray-500 bg-black/50 px-2 py-1 rounded border border-gray-700">
+          Total: {events.length}
         </span>
       </div>
       
-      <ul className="space-y-3 text-sm overflow-y-auto flex-1 pr-2">
+      {/* LISTA SCROLLEABLE */}
+      {/* Agregamos 'cyber-scrollbar' y aseguramos que ocupe el espacio restante */}
+      <ul className="space-y-3 text-sm overflow-y-auto flex-1 pr-2 cyber-scrollbar">
         {events.map((evt, idx) => {
-          // BLINDAJE TOTAL DE DATOS
-          // Buscamos las claves correctas (event_type_name) y tenemos fallbacks
-          const rawType = evt.event_type_name || evt.type_name || evt.Type || "EVENTO";
-          const rawPlayer = evt.player_name || evt.Player || "";
-          const rawMinute = evt.minute || evt.Time || 0;
+           // ... (toda tu lógica de renderizado de items se mantiene igual) ...
+           // Solo asegúrate de que el return del map esté aquí dentro
+           const rawType = evt.event_type_name || evt.type_name || evt.Type || "EVENTO";
+           const rawPlayer = evt.player_name || evt.Player || "";
+           const rawMinute = evt.minute || evt.Time || 0;
+           const { icon, color } = getEventStyle(rawType);
+           const timeFormatted = formatMatchTime(rawMinute);
 
-          const { icon, color } = getEventStyle(rawType);
-          const timeFormatted = formatMatchTime(rawMinute);
-
-          return (
-            <li key={idx} className="flex items-center gap-3 border-b border-gray-800 pb-2 animate-pulse hover:bg-white/5 p-1 rounded transition">
-              <span className="text-lg leading-none w-6 text-center" role="img" aria-label={rawType}>
+           return (
+            <li key={idx} className="flex items-center gap-3 border-b border-gray-800 pb-2 hover:bg-white/5 p-1 rounded transition group">
+              <span className="text-lg leading-none w-6 text-center group-hover:scale-110 transition-transform" role="img" aria-label={rawType}>
                 {icon}
               </span>
               <span className="font-mono text-gray-500 text-xs font-bold min-w-[32px]">
@@ -82,10 +84,11 @@ const EventFeed = ({ events = [] }) => {
           )
         })}
         
+        {/* Mensaje de estado vacío */}
         {events.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-gray-600 gap-2 min-h-[100px]">
             <span className="text-2xl opacity-20">📭</span>
-            <span className="text-xs italic">Esperando datos...</span>
+            <span className="text-xs italic">Esperando datos del partido...</span>
           </div>
         )}
       </ul>
@@ -199,14 +202,14 @@ function App() {
         } 
         else if (msg.type === "event") {
           const newEvent = msg.payload;
-          
+  
           if (newEvent) {
-            console.log("📩 Evento Recibido:", newEvent.event_type_name); // LOG PARA VERIFICAR
-            
+            console.log("📩 Evento Recibido:", newEvent.event_type_name);
+    
             setLatestEvent(newEvent);
             setEventsList(prev => {
-                // Mantiene los últimos 50 eventos
-                return [newEvent, ...prev].slice(0, 50);
+                const updatedList = [newEvent, ...prev]; 
+                return updatedList;
             });
             
             setTimeout(() => setLatestEvent(null), 2000);
@@ -235,7 +238,7 @@ function App() {
   const liveFrame = history[history.length - 1] || null;
 
   return (
-    <div className="bg-transparent text-cyber-text min-h-screen w-screen overflow-hidden flex flex-col font-sans selection:bg-cyber-neon selection:text-black relative">
+    <div className="bg-transparent text-cyber-text h-screen w-screen overflow-hidden flex flex-col font-sans selection:bg-cyber-neon selection:text-black relative">
       
       {/* HEADER */}
       <header className="h-36 flex items-center justify-between px-16 border-b border-gray-800/30 z-20 relative">
@@ -262,13 +265,12 @@ function App() {
       </header>
 
       {/* MAIN */}
-      <div className="flex-1 grid grid-cols-12 gap-6 p-6 relative z-10">
-        <div className="col-span-3 flex flex-col gap-6">
-          <div className="flex-1 min-h-0 flex flex-col"> 
-             {/* PASAMOS LA LISTA DE EVENTOS */}
-             <EventFeed events={eventsList} />
+      <div className="flex-1 grid grid-cols-12 gap-6 p-6 relative z-10 min-h-0 overflow-hidden">
+        <div className="col-span-3 flex flex-col gap-6 h-full overflow-hidden">
+          <div className="flex-1 min-h-0 flex flex-col relative"> 
+            <EventFeed events={eventsList} />
           </div>
-          <div className="h-72"><GhostMateTicker /></div>
+          <div className="h-72 shrink-0"><GhostMateTicker /></div>
         </div>
 
         <div className="col-span-9 flex flex-col relative bg-cyber-panel/30 rounded-xl border border-cyber-neon/30 shadow-2xl overflow-hidden backdrop-blur-sm">

@@ -40,3 +40,20 @@
 .read-the-docs {
   color: #888;
 }
+
+.cyber-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.cyber-scrollbar::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.cyber-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #00f2ff; /* Tu color cyber-neon */
+  border-radius: 3px;
+}
+
+.cyber-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #00c2cc;
+}
