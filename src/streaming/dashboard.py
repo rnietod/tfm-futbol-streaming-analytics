@@ -9,7 +9,7 @@ import requests
 # Asegurar path para imports
 sys.path.append(os.getcwd())
 
-from src.streaming.engine import SimulationEngine
+from src.streaming.engine import SimulationEngine # noqa: E402
 
 # CONFIGURACIÓN UI
 st.set_page_config(page_title="TACTIX Command Center", page_icon="🎛️", layout="wide")
@@ -72,12 +72,13 @@ with st.sidebar:
 # --- MAIN PANEL ---
 c1, c2 = st.columns([3, 1])
 c1.title("TACTIX: Match Simulator")
-status_html = f'<span class="status-live">EN VIVO</span>' if engine.running else f'<span class="status-off">DETENIDO</span>'
+status_html = '<span class="status-live">EN VIVO</span>' if engine.running else f'<span class="status-off">DETENIDO</span>'
 c2.markdown(f"## {status_html}", unsafe_allow_html=True)
 
 # METRICAS
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("Tiempo de Juego", f"{int(engine.current_time // 60):02d}:{int(engine.current_time % 60):02d}" if engine.current_time >= 0 else "--:--")
+time_display = f"{int(engine.current_time // 60):02d}:{int(engine.current_time % 60):02d}"
+m1.metric("Tiempo de Juego", time_display if engine.current_time >= 0 else "--:--")
 m2.metric("Periodo", engine.current_period)
 m3.metric("Frames Tracking", engine.total_tracking)
 m4.metric("Eventos Disparados", engine.total_events)
@@ -92,8 +93,10 @@ with b1:
     if st.button("📋 1. Enviar Alineación (Metadata)", type="primary"):
         with st.spinner("Enviando Metadata a Redis..."):
             res = engine.send_alignment()
-            if res: st.success("Alineación cargada en el sistema.")
-            else: st.error("Error cargando alineación.")
+            if res: 
+                st.success("Alineación cargada en el sistema.")
+            else: 
+                st.error("Error cargando alineación.")
 
 with b2:
     # EL TRIGGER DE INICIO (Paso 2)

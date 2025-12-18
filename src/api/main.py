@@ -23,6 +23,7 @@ redis_conn = get_redis_connection()
 # ==========================================
 # 🛡️ EL ESCUDO ANTI-NAN (Sanitizer)
 # ==========================================
+
 def clean_nans(obj):
     """
     Recorre recursivamente cualquier objeto (lista, dict, valor).
@@ -38,9 +39,11 @@ def clean_nans(obj):
         return [clean_nans(v) for v in obj]
     return obj
 
+
 @app.get("/")
 def read_root():
     return {"status": "TACTIX API Online 🟢"}
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -53,16 +56,17 @@ async def startup_event():
         keys = []
         for k in redis_conn.scan_iter("match:*"):
             keys.append(k)
-        
+
         if keys:
             redis_conn.delete(*keys)
             print(f"🧹 LIMPIEZA INICIAL: {len(keys)} claves viejas eliminadas de Redis.")
         else:
             print("✨ Redis está limpio. Listo para empezar.")
-            
+
     except Exception as e:
         print(f"⚠️ Alerta: No se pudo limpiar Redis al inicio: {e}")
-        
+
+
 @app.delete("/admin/reset-all")
 def reset_all_data():
     """
@@ -96,6 +100,7 @@ def reset_all_data():
     print(f"⚠️ ADMIN RESET: {report}")
     return report
 
+
 @app.get("/match/{match_id}/metadata")
 def get_match_metadata(match_id: str):
     """
@@ -103,7 +108,7 @@ def get_match_metadata(match_id: str):
     """
     if not redis_conn:
         return {"error": "Redis no conectado"}
-    
+
     key = f"match:{match_id}:metadata"
     data = redis_conn.get(key)
     
@@ -113,6 +118,7 @@ def get_match_metadata(match_id: str):
         return clean_nans(json_data)
         
     return {"error": "Metadata no encontrada (¿Enviaste la alineación desde el Dashboard?)"}
+
 
 @app.websocket("/ws/match/{match_id}")
 async def websocket_endpoint(websocket: WebSocket, match_id: str):
@@ -139,7 +145,7 @@ async def websocket_endpoint(websocket: WebSocket, match_id: str):
                 
                 await websocket.send_json({
                     "type": "tracking",
-                    "payload": safe_payload 
+                    "payload": safe_payload
                 })
 
             # --- B. EVENTOS (Push) ---
@@ -165,7 +171,7 @@ async def websocket_endpoint(websocket: WebSocket, match_id: str):
             await asyncio.sleep(0.01)
 
     except WebSocketDisconnect:
-        print(f"🔴 Cliente desconectado")
+        print("🔴 Cliente desconectado")
     except Exception as e:
         print(f"❌ Error crítico en WebSocket: {e}")
         await websocket.close()

@@ -1,22 +1,29 @@
 import pandas as pd
 import json
 import os
-import sys
 
 # Ajustar ruta
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_FILE = os.path.join(BASE_DIR, "data", "tracking_file.jsonl")
 
+
 def _time_to_seconds(time_val):
-    if pd.isna(time_val) or time_val is None: return None
-    if isinstance(time_val, (int, float)): return float(time_val)
+    if pd.isna(time_val) or time_val is None:
+        return None
+    if isinstance(time_val, (int, float)):
+        return float(time_val)
     time_str = str(time_val).strip()
     try:
         parts = time_str.split(':')
-        if len(parts) == 3: return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
-        elif len(parts) == 2: return float(parts[0]) * 60 + float(parts[1])
-        else: return float(time_str)
-    except: return None
+        if len(parts) == 3:
+            return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+        elif len(parts) == 2:
+            return float(parts[0]) * 60 + float(parts[1])
+        else:
+            return float(time_str)
+    except:
+        return None
+
 
 def inspect_schema():
     print(f"🔍 Inspeccionando archivo: {DATA_FILE}")
@@ -68,6 +75,7 @@ def inspect_schema():
 
     except Exception as e:
         print(f"❌ Error: {e}")
+
 
 if __name__ == "__main__":
     inspect_schema()

@@ -4,7 +4,6 @@ import json
 import time
 import threading
 import os
-import sys
 from datetime import datetime
 from src.data.redis_client import get_redis_connection
 
@@ -13,6 +12,7 @@ MATCH_ID = "test_match"
 KEY_TRACKING = f"match:{MATCH_ID}:tracking"
 KEY_EVENTS = f"match:{MATCH_ID}:events"
 KEY_METADATA = f"match:{MATCH_ID}:metadata"
+
 
 class SimulationEngine:
     def __init__(self, env="dev"):
@@ -70,10 +70,14 @@ class SimulationEngine:
         if " " in time_str: time_str = time_str.split(" ")[-1]
         try:
             parts = time_str.split(':')
-            if len(parts) == 3: return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
-            elif len(parts) == 2: return float(parts[0]) * 60 + float(parts[1])
-            else: return float(time_str)
-        except: return None
+            if len(parts) == 3:
+                return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+            elif len(parts) == 2:
+                return float(parts[0]) * 60 + float(parts[1])
+            else:
+                return float(time_str)
+        except:
+            return None
 
     def load_data(self):
         self.status_message = "Cargando datos..."
@@ -162,7 +166,7 @@ class SimulationEngine:
                 critical_cols = ["timestamp", "period"]
                 missing_critical = [c for c in critical_cols if c not in e_df.columns]
                 if missing_critical:
-                      raise ValueError(f"Faltan columnas críticas en CSV: {missing_critical}")
+                    raise ValueError(f"Faltan columnas críticas en CSV: {missing_critical}")
 
                 # 2. Calcular tiempo para el motor (game_time)
                 e_df['game_time'] = e_df['timestamp'].apply(self._time_to_seconds)
@@ -204,7 +208,8 @@ class SimulationEngine:
         # Intentamos cargar si no está cargado
         if not self.raw_ids_data:
             success = self.load_data()
-            if not success: return False
+            if not success:
+                return False
         
         try:
             # Enviamos a Redis
@@ -223,7 +228,8 @@ class SimulationEngine:
 
     def start_stream(self):
         if not self.tracking_stream:
-            if not self.load_data(): return
+            if not self.load_data():
+                return
         if not self.running:
             self.running = True
             self._thread = threading.Thread(target=self._stream_loop)
@@ -334,7 +340,8 @@ class SimulationEngine:
         self._log("🏁 Streaming finalizado.")
 
     def _publish_tracking(self, record):
-        if not self.redis: return
+        if not self.redis:
+            return
         try:
             # Limpieza para no enviar datos internos de Python
             payload = {k: v for k, v in record.items() if k not in ['game_time', 'converted_time']}
@@ -342,10 +349,12 @@ class SimulationEngine:
             
             self.total_tracking += 1
             self.metrics['tracking']['count'] += 1
-        except Exception: self.errors += 1
+        except Exception:
+            self.errors += 1
 
     def _publish_event(self, record):
-        if not self.redis: return
+        if not self.redis:
+            return
         try:
             payload = {k: v for k, v in record.items() if k not in ['game_time']}
             self.redis.publish(KEY_EVENTS, json.dumps(payload))
@@ -359,4 +368,5 @@ class SimulationEngine:
                 'Type': evt_type,
                 'Player': payload.get('player_name')
             })
-        except Exception: self.errors += 1
+        except Exception:
+            self.errors += 1
