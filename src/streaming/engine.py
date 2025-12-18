@@ -25,7 +25,7 @@ class SimulationEngine:
         # Listas Maestras
         self.tracking_stream = []
         self.eventing_stream = []
-        self.raw_ids_data = None 
+        self.raw_ids_data = None
 
         self.ids_map = {}
         self._thread = None
@@ -64,10 +64,13 @@ class SimulationEngine:
 
     @staticmethod
     def _time_to_seconds(time_val):
-        if pd.isna(time_val) or time_val is None: return None
-        if isinstance(time_val, (int, float)): return float(time_val)
+        if pd.isna(time_val) or time_val is None:
+            return None
+        if isinstance(time_val, (int, float)):
+            return float(time_val)
         time_str = str(time_val).strip()
-        if " " in time_str: time_str = time_str.split(" ")[-1]
+        if " " in time_str:
+            time_str = time_str.split(" ")[-1]
         try:
             parts = time_str.split(':')
             if len(parts) == 3:
@@ -76,7 +79,7 @@ class SimulationEngine:
                 return float(parts[0]) * 60 + float(parts[1])
             else:
                 return float(time_str)
-        except:
+        except Exception:
             return None
 
     def load_data(self):
@@ -84,7 +87,7 @@ class SimulationEngine:
         self._log("Iniciando carga y limpieza de archivos...")
         self.tracking_stream = []
         self.eventing_stream = []
-        
+
         try:
             track_file = os.path.join(self.data_dir, "tracking_file.jsonl")
             ev_file = os.path.join(self.data_dir, "eventing_file.csv")
@@ -98,7 +101,7 @@ class SimulationEngine:
 
             with open(ids_file, 'r', encoding='utf-8') as f:
                 raw_json = json.load(f)
-                
+
                 # Construimos un objeto limpio siguiendo tus JSONPaths
                 clean_metadata = {
                     "home_team": {
@@ -106,7 +109,7 @@ class SimulationEngine:
                         "short_name": raw_json.get("home_team", {}).get("short_name")  # $.home_team.short_name
                     },
                     "away_team": {
-                        "id": raw_json.get("away_team", {}).get("id"),                 # $.away_team.id (corregido typo awey)
+                        "id": raw_json.get("away_team", {}).get("id"),                 # $.away_team.id
                         "short_name": raw_json.get("away_team", {}).get("short_name")  # $.away_team.short_name
                     },
                     "players": []
@@ -124,7 +127,7 @@ class SimulationEngine:
                         "role": p.get("player_role", {}).get("acronym")       # $.players[x].player_role.acronym
                     }
                     clean_metadata["players"].append(clean_player)
-                    
+
                     # Actualizamos el mapa interno para el Engine
                     if clean_player["id"]:
                         self.ids_map[str(clean_player["id"])] = clean_player
@@ -134,14 +137,15 @@ class SimulationEngine:
             # ==========================================
             # 2. TRACKING (Sin cambios mayores)
             # ==========================================
-            if not os.path.exists(track_file): 
+            if not os.path.exists(track_file):
                 raise FileNotFoundError(f"Falta {track_file}")
-            
+
             t_df = pd.read_json(track_file, lines=True)
             t_df['timestamp'] = t_df['timestamp'].astype(str)
             t_df['game_time'] = t_df['timestamp'].apply(self._time_to_seconds)
-            if 'period' not in t_df.columns: t_df['period'] = 1
-            
+            if 'period' not in t_df.columns:
+                t_df['period'] = 1
+
             self.tracking_stream = t_df.to_dict('records')
             self.total_game_time = t_df['game_time'].max() if not t_df['game_time'].isna().all() else 1
 
@@ -153,11 +157,11 @@ class SimulationEngine:
 
                 # Lista exacta de columnas solicitadas
                 target_columns = [
-                    "timestamp", "period", "minute", "event_type_name", "event_type_id", 
-                    "team_name", "player_name", "location_x", "location_y", 
-                    "end_location_y", "end_location_x", "end_location_z", 
-                    "pass_recipient_name", "pass_length", "pass_angle", 
-                    "pass_height_name", "pass_cross", "pass_cut_back", 
+                    "timestamp", "period", "minute", "event_type_name", "event_type_id",
+                    "team_name", "player_name", "location_x", "location_y",
+                    "end_location_y", "end_location_x", "end_location_z",
+                    "pass_recipient_name", "pass_length", "pass_angle",
+                    "pass_height_name", "pass_cross", "pass_cut_back",
                     "pass_switch", "body_part_name", "outcome_id", "outcome_name",
                     "type_id", "type_name"
                 ]
@@ -171,22 +175,22 @@ class SimulationEngine:
                 # 2. Calcular tiempo para el motor (game_time)
                 e_df['game_time'] = e_df['timestamp'].apply(self._time_to_seconds)
                 e_df = e_df.dropna(subset=['game_time'])
-                
+
                 # 3. Filtrar y rellenar columnas faltantes (para no romper si falta una opcional)
                 # Si una columna opcional (ej: pass_cross) no viene, la creamos con None
                 for col in target_columns:
                     if col not in e_df.columns:
-                        e_df[col] = None 
-                
+                        e_df[col] = None
+
                 # 4. Seleccionar SOLO las columnas de interés + game_time
                 final_cols = target_columns + ['game_time']
                 e_df = e_df[final_cols]
 
                 # 5. Ordenar para el streaming
                 e_df = e_df.sort_values(by=['period', 'game_time'])
-                
+
                 e_df = e_df.where(pd.notnull(e_df), None)
-                
+
                 self.eventing_stream = e_df.to_dict('records')
 
             self.status_message = f"Datos Pulidos: {len(self.tracking_stream)} frames | {len(self.eventing_stream)} eventos"
@@ -210,7 +214,7 @@ class SimulationEngine:
             success = self.load_data()
             if not success:
                 return False
-        
+
         try:
             # Enviamos a Redis
             if self.redis:
@@ -244,11 +248,11 @@ class SimulationEngine:
         event_idx = 0
         total_track = len(self.tracking_stream)
         total_event = len(self.eventing_stream)
-        
+
         # Control de Tiempo y Delta
         last_tracking_time = None  # Para calcular el sleep entre frames
         FRAME_DURATION = 0.1       # Fallback si no hay timestamp
-        
+
         # Control de Sincronización Eventos (Absoluto vs Relativo)
         current_period_start_time = 0.0
         last_processed_period = 1
@@ -257,12 +261,12 @@ class SimulationEngine:
 
         while self.running and track_idx < total_track:
             start_proc = time.time()
-            
+
             # 1. Obtener Frame de Tracking
             track_record = self.tracking_stream[track_idx]
             current_game_time_abs = track_record.get('game_time') # Tiempo ABSOLUTO (e.g., 2800s)
             p_val = track_record.get('period')
-            
+
             # --- LÓGICA DE TIEMPO Y SLEEP (Tu requerimiento de 0.1s / 0.05s) ---
             if pd.isna(current_game_time_abs):
                 # Si no hay tiempo, usamos velocidad crucero por defecto
@@ -283,12 +287,12 @@ class SimulationEngine:
                 if last_tracking_time is not None:
                     delta = current_game_time_abs - last_tracking_time
                     # Protección contra saltos gigantes o negativos (ej: pausas largas o errores)
-                    if 0 <= delta < 5.0: 
+                    if 0 <= delta < 5.0:
                         wait = delta
-                    else: 
+                    else:
                         wait = FRAME_DURATION
                 else:
-                    wait = 0 # Primer frame sale disparado
+                    wait = 0  # Primer frame sale disparado
 
                 last_tracking_time = current_game_time_abs
 
@@ -304,7 +308,7 @@ class SimulationEngine:
 
             while event_idx < total_event:
                 event_record = self.eventing_stream[event_idx]
-                ev_time_rel = event_record['game_time'] # Esto viene reiniciado (0-45)
+                ev_time_rel = event_record['game_time']  # Esto viene reiniciado (0-45)
                 ev_period = event_record['period']
 
                 # CASO 1: Eventos atrasados (de periodos anteriores o segundos previos)
@@ -312,7 +316,7 @@ class SimulationEngine:
                 if ev_period < self.current_period:
                     self._publish_event(event_record)
                     event_idx += 1
-                
+
                 # CASO 2: Eventos del periodo actual
                 # Comparamos peras con peras (Tiempo Relativo vs Tiempo Relativo)
                 elif ev_period == self.current_period:
@@ -323,15 +327,15 @@ class SimulationEngine:
                     else:
                         # El evento es futuro, paramos de buscar en la lista
                         break
-                
+
                 # CASO 3: Eventos de periodos futuros (no deberían estar aquí por el sort, pero por seguridad)
                 else:
-                    break 
+                    break
 
             # 3. Publicar Tracking
             self._publish_tracking(track_record)
             track_idx += 1
-            
+
             # Latencia real de procesamiento
             self.latency_ms = (time.time() - start_proc) * 1000
 
@@ -346,7 +350,7 @@ class SimulationEngine:
             # Limpieza para no enviar datos internos de Python
             payload = {k: v for k, v in record.items() if k not in ['game_time', 'converted_time']}
             self.redis.set(KEY_TRACKING, json.dumps(payload))
-            
+
             self.total_tracking += 1
             self.metrics['tracking']['count'] += 1
         except Exception:
@@ -358,13 +362,13 @@ class SimulationEngine:
         try:
             payload = {k: v for k, v in record.items() if k not in ['game_time']}
             self.redis.publish(KEY_EVENTS, json.dumps(payload))
-            
+
             self.total_events += 1
             self.metrics['eventing']['count'] += 1
-            
+
             evt_type = payload.get('event_type_name') or payload.get('type')
             self.sent_eventing_log.append({
-                'Time': f"{self.current_time:.1f}", 
+                'Time': f"{self.current_time:.1f}",
                 'Type': evt_type,
                 'Player': payload.get('player_name')
             })

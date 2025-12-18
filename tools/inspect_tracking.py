@@ -21,13 +21,13 @@ def _time_to_seconds(time_val):
             return float(parts[0]) * 60 + float(parts[1])
         else:
             return float(time_str)
-    except:
+    except Exception:
         return None
 
 
 def inspect_schema():
     print(f"🔍 Inspeccionando archivo: {DATA_FILE}")
-    
+
     if not os.path.exists(DATA_FILE):
         print(f"❌ Error: No encuentro el archivo en {DATA_FILE}")
         return
@@ -35,22 +35,23 @@ def inspect_schema():
     try:
         # 1. Carga
         t_df = pd.read_json(DATA_FILE, lines=True)
-        
+
         # 2. Transformaciones
         t_df['timestamp'] = t_df['timestamp'].astype(str)
         t_df['game_time'] = t_df['timestamp'].apply(_time_to_seconds)
-        if 'period' not in t_df.columns: t_df['period'] = 1
+        if 'period' not in t_df.columns:
+            t_df['period'] = 1
         
         # --- AQUÍ ESTÁ EL CAMBIO ---
         # Saltamos al frame 1340 donde dices que empieza la acción
-        TARGET_FRAME = 1341 
-        
+        TARGET_FRAME = 1341
+
         print(f"\n⏩ Saltando al frame {TARGET_FRAME} para ver datos reales...")
-        
+
         # Extraemos 1 solo registro representativo
         valid_row = t_df.iloc[TARGET_FRAME]
         valid_dict = valid_row.to_dict()
-        
+
         # 3. Análisis de Tipos
         print("\n📊 TIPOS DE DATOS (En este frame):")
         print(valid_row.map(type))

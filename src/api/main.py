@@ -20,10 +20,10 @@ app.add_middleware(
 
 redis_conn = get_redis_connection()
 
+
 # ==========================================
 # 🛡️ EL ESCUDO ANTI-NAN (Sanitizer)
 # ==========================================
-
 def clean_nans(obj):
     """
     Recorre recursivamente cualquier objeto (lista, dict, valor).
@@ -111,12 +111,12 @@ def get_match_metadata(match_id: str):
 
     key = f"match:{match_id}:metadata"
     data = redis_conn.get(key)
-    
+
     if data:
         json_data = json.loads(data)
         # 🛡️ Blindaje también aquí por si la metadata tiene basura
         return clean_nans(json_data)
-        
+
     return {"error": "Metadata no encontrada (¿Enviaste la alineación desde el Dashboard?)"}
 
 
@@ -127,11 +127,11 @@ async def websocket_endpoint(websocket: WebSocket, match_id: str):
     """
     await websocket.accept()
     print(f"🟢 Cliente conectado al partido: {match_id}")
-    
+
     # Suscribirse al Canal de Eventos
     pubsub = redis_conn.pubsub()
     pubsub.subscribe(f"match:{match_id}:events")
-    
+
     try:
         while True:
             # --- A. TRACKING (Polling) ---
@@ -139,10 +139,10 @@ async def websocket_endpoint(websocket: WebSocket, match_id: str):
             
             if tracking_raw:
                 track_data = json.loads(tracking_raw)
-                
+
                 # 🛡️ Blindaje antes de enviar
                 safe_payload = clean_nans(track_data)
-                
+
                 await websocket.send_json({
                     "type": "tracking",
                     "payload": safe_payload
@@ -150,18 +150,18 @@ async def websocket_endpoint(websocket: WebSocket, match_id: str):
 
             # --- B. EVENTOS (Push) ---
             message = pubsub.get_message(ignore_subscribe_messages=True)
-            
+
             if message and message['type'] == 'message':
                 event_data = json.loads(message['data'])
-                
+
                 # Log de control
                 evt_name = event_data.get('event_type_name', 'Evento')
                 minute = event_data.get('minute', '?')
                 print(f"⚡ Enviando: {evt_name} ({minute}')")
-                
+
                 # 🛡️ Blindaje antes de enviar (Aquí es donde solía fallar)
                 safe_payload = clean_nans(event_data)
-                
+
                 await websocket.send_json({
                     "type": "event",
                     "payload": safe_payload

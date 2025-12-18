@@ -9,6 +9,7 @@ import requests
 # Asegurar path para imports
 sys.path.append(os.getcwd())
 
+
 from src.streaming.engine import SimulationEngine # noqa: E402
 
 # CONFIGURACIÓN UI
@@ -37,7 +38,7 @@ with st.sidebar:
         engine.stop_stream()
         st.session_state.engine = SimulationEngine()
         st.rerun()
-    
+
     st.divider()
 
     st.markdown("### 🧨 Zona de Peligro")
@@ -48,10 +49,10 @@ with st.sidebar:
         try:
             # Llamamos al nuevo endpoint global
             response = requests.delete(f"{API_URL}/admin/reset-all")
-            
+
             if response.status_code == 200:
                 st.toast("✅ Sistema reiniciado. Memoria limpia.", icon="🧹")
-                
+
                 # Reiniciamos también el motor local para que no siga enviando datos viejos
                 engine.stop_stream()
                 st.session_state.engine = SimulationEngine()
@@ -72,7 +73,10 @@ with st.sidebar:
 # --- MAIN PANEL ---
 c1, c2 = st.columns([3, 1])
 c1.title("TACTIX: Match Simulator")
-status_html = '<span class="status-live">EN VIVO</span>' if engine.running else f'<span class="status-off">DETENIDO</span>'
+if engine.running:
+    status_html = '<span class="status-live">EN VIVO</span>'
+else:
+    status_html = '<span class="status-off">DETENIDO</span>'
 c2.markdown(f"## {status_html}", unsafe_allow_html=True)
 
 # METRICAS
@@ -93,9 +97,9 @@ with b1:
     if st.button("📋 1. Enviar Alineación (Metadata)", type="primary"):
         with st.spinner("Enviando Metadata a Redis..."):
             res = engine.send_alignment()
-            if res: 
+            if res:
                 st.success("Alineación cargada en el sistema.")
-            else: 
+            else:
                 st.error("Error cargando alineación.")
 
 with b2:
@@ -128,3 +132,4 @@ with c_event:
 if engine.running:
     time.sleep(1)
     st.rerun()
+    
