@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from src.data.redis_client import get_redis_connection
 import asyncio
@@ -175,3 +175,95 @@ async def websocket_endpoint(websocket: WebSocket, match_id: str):
     except Exception as e:
         print(f"❌ Error crítico en WebSocket: {e}")
         await websocket.close()
+
+
+# ==========================================
+# 📼 TIME-SHIFTING / REPLAY API (PostgreSQL)
+# ==========================================
+@app.get("/match/{match_id}/tracking/history")
+def get_tracking_history(
+    match_id: str, 
+    start_frame: int = Query(..., description="Frame inicial para el buffer de replay"),
+    end_frame: int = Query(..., description="Frame final para el buffer de replay")
+):
+    """
+    Recupera segmentos de tracking histórico (video) desde PostgreSQL.
+    Devuelve los frames ordenados y parseados, listos para la animación.
+    """
+    engine = get_db_engine()
+    results = []
+
+    try:
+        with engine.connect() as conn:
+            # Seleccionamos solo lo necesario para mantener la respuesta ligera
+            query = text("""
+                SELECT frame_idx, players_data 
+                FROM match_tracking 
+                WHERE match_id = :mid 
+                  AND frame_idx BETWEEN :start AND :end 
+                ORDER BY frame_idx ASC
+            """)
+
+            rows = conn.execute(query, {
+                "mid": match_id, 
+                "start": start_frame, 
+                "end": end_frame
+            }).fetchall()
+
+            for row in rows:
+                # Parsing seguro del JSON almacenado como texto en DB
+                p_data = row.players_data
+                if isinstance(p_data, str): p_data = json.loads(p_data)
+
+                frame_obj = {
+                    "frame_idx": row.frame_idx,
+                    "tracking": p_data
+                }
+                # Sanitización obligatoria antes de enviar al frontend
+                results.append(clean_nans(frame_obj))
+
+        return results
+
+    except Exception as e:
+        print(f"❌ Error fetching tracking history: {e}")
+        return {"error": "Error recuperando histórico de tracking", "details": str(e)}
+
+
+@app.get("/match/{match_id}/events/history")
+def get_events_history(match_id: str):
+    """
+    Recupera la lista COMPLETA de eventos del partido (Contexto).
+    No aplica filtros de tiempo: devuelve todo lo ocurrido hasta ahora.
+    """
+    engine = get_db_engine()
+    events = []
+
+    try:
+        with engine.connect() as conn:
+            query = text("""
+                SELECT event_uuid, period, minute, second, type_name, player_id, x, y
+                FROM match_events
+                WHERE match_id = :mid
+                ORDER BY period ASC, minute ASC, second ASC
+            """)
+
+            rows = conn.execute(query, {"mid": match_id}).fetchall()
+
+            for row in rows:
+                # Mapeo consistente con el formato del WebSocket
+                evt = {
+                    "id": row.event_uuid,
+                    "period": row.period,
+                    "minute": row.minute,
+                    "second": row.second,
+                    "event_type_name": row.type_name,
+                    "player_id": row.player_id,
+                    "location": {"x": row.x, "y": row.y}
+                }
+                events.append(clean_nans(evt))
+
+        return events
+
+    except Exception as e:
+        print(f"❌ Error fetching events history: {e}")
+        return {"error": "Error recuperando histórico de eventos", "details": str(e)}
