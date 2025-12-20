@@ -22,6 +22,8 @@ class PersistenceWorker:
         
         self.tracking_buffer = []
         self.metadata_saved = False
+
+        self.last_saved_frame_idx = -1
         
         self._check_db_connection()
         signal.signal(signal.SIGINT, self.stop)
@@ -86,8 +88,11 @@ class PersistenceWorker:
                 players = []
                 for p in data['players']:
                     players.append({
-                        "mid": MATCH_ID, "pid": str(p['id']), "tid": str(p['team_id']),
-                        "name": p['short_name'], "num": p['number'], "pos": p['role']
+                        "mid": MATCH_ID, "pid": str(p['id']),
+                        "tid": str(p['team_id']),
+                        "name": p['short_name'],
+                        "num": p['number'],
+                        "pos": p['role']
                     })
                 
                 if players:
@@ -104,24 +109,75 @@ class PersistenceWorker:
             self._log(f"Error Metadata: {e}", "ERROR")
 
     def save_event(self, msg):
-        if not self.metadata_saved: return
-
         try:
             ev = self.clean_nans(json.loads(msg['data']))
+            
             with self.db_engine.begin() as conn:
                 conn.execute(text("""
-                    INSERT INTO match_events (event_uuid, match_id, period, minute, second, type_name, player_id, x, y)
-                    VALUES (:uuid, :mid, :per, :min, :sec, :type, :pid, :x, :y)
+                    INSERT INTO match_events (
+                        event_uuid, match_id, timestamp, period, minute, second,
+                        event_type_id, event_type_name, type_id, type_name, 
+                        outcome_id, outcome_name,
+                        team_name, player_id, player_name,
+                        location_x, location_y, 
+                        end_location_x, end_location_y, end_location_z,
+                        pass_length, pass_angle, pass_recipient_name, 
+                        pass_height_name, body_part_name
+                    )
+                    VALUES (
+                        :uuid, :mid, :ts, :per, :min, :sec,
+                        :et_id, :et_name, :t_id, :t_name, 
+                        :o_id, :o_name,
+                        :team, :pid, :pname,
+                        :x, :y, 
+                        :end_x, :end_y, :end_z,
+                        :p_len, :p_ang, :p_rec, 
+                        :p_height, :body
+                    )
                     ON CONFLICT (event_uuid) DO NOTHING
                 """), {
                     "uuid": ev.get('id') or f"{MATCH_ID}-{time.time()}",
-                    "mid": MATCH_ID, "per": ev.get('period'), "min": ev.get('minute'), "sec": ev.get('second'),
-                    "type": ev.get('event_type_name'), "pid": str(ev.get('player_id')),
-                    "x": ev.get('location_x'), "y": ev.get('location_y')
+                    "mid": MATCH_ID,
+                    "ts": ev.get('timestamp'),
+                    "per": ev.get('period'),
+                    "min": ev.get('minute'),
+                    "sec": ev.get('second'),
+                    
+                    # IDs Clave
+                    "et_id": ev.get('event_type_id'),
+                    "et_name": ev.get('event_type_name'),
+                    "t_id": ev.get('type_id'),      # Subtipo (ej: Penalty)
+                    "t_name": ev.get('type_name'),  # Nombre Subtipo
+                    "o_id": ev.get('outcome_id'),   # Resultado (ej: Gol)
+                    "o_name": ev.get('outcome_name'),
+
+                    # Contexto
+                    "team": ev.get('team_name'),
+                    "pid": str(ev.get('player_id')) if ev.get('player_id') else None,
+                    "pname": ev.get('player_name'),
+
+                    # Coordenadas
+                    "x": ev.get('location_x'),
+                    "y": ev.get('location_y'),
+                    "end_x": ev.get('end_location_x'),
+                    "end_y": ev.get('end_location_y'),
+                    "end_z": ev.get('end_location_z'),
+
+                    # Detalles Pase
+                    "p_len": ev.get('pass_length'),
+                    "p_ang": ev.get('pass_angle'),
+                    "p_rec": ev.get('pass_recipient_name'),
+                    "p_height": ev.get('pass_height_name'),
+                    "body": ev.get('body_part_name')
                 })
-            self._log(f"⚽ Evento: {ev.get('event_type_name')}")
-        except Exception:
-            pass
+            
+            # Log más detallado para debug
+            tipo = ev.get('event_type_name', 'Evento')
+            subtipo = f"({ev.get('type_name')})" if ev.get('type_name') else ""
+            self._log(f"⚽ Guardado: {tipo} {subtipo} - Min {ev.get('minute')}")
+            
+        except Exception as e:
+            self._log(f"Error saving event: {e}", "ERROR")
 
     def run(self):
         self._log("👷 WORKER ACTIVO - Modo Inspección Superado", "INFO")
@@ -144,26 +200,29 @@ class PersistenceWorker:
             raw_track = self.redis.get(f"match:{MATCH_ID}:tracking")
             if raw_track:
                 try:
-                    # Parsear + Limpiar
                     dirty_obj = json.loads(raw_track)
                     clean_obj = self.clean_nans(dirty_obj)
                     
-                    # MEJORA CLAVE: Usamos el frame real del JSON (ej: 1341)
-                    # Si viene null, usamos time.time() como fallback
-                    real_frame_idx = clean_obj.get("frame") or int(time.time())
+                    # Extraer frame. Si no existe, IGNORAR (no inventar timestamp)
+                    frame_idx = clean_obj.get("frame") or clean_obj.get("frame_idx")
                     
-                    # Convertir de nuevo a string seguro para SQL
-                    clean_json_str = json.dumps(clean_obj)
-                    
-                    self.tracking_buffer.append({
-                        "mid": MATCH_ID, 
-                        "idx": real_frame_idx, 
-                        "ts": datetime.now(), 
-                        "data": clean_json_str 
-                    })
-                except Exception as e:
-                    # Si falla un frame puntual, lo ignoramos y seguimos
-                    # (Probablemente era uno de esos frames nulos del inicio)
+                    if frame_idx is not None:
+                        frame_idx = int(frame_idx)
+                        
+                        # ✨ LA CLAVE: Si es el mismo frame que ya guardé, PASAR
+                        if frame_idx > self.last_saved_frame_idx:
+                            
+                            self.tracking_buffer.append({
+                                "mid": MATCH_ID, 
+                                "idx": frame_idx, 
+                                "ts": datetime.now(), 
+                                "data": json.dumps(clean_obj) 
+                            })
+                            
+                            # Actualizamos el puntero de memoria
+                            self.last_saved_frame_idx = frame_idx
+                            
+                except Exception:
                     pass
 
             # Flush a Base de Datos

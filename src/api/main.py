@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from src.data.redis_client import get_redis_connection
 import asyncio
@@ -175,3 +175,113 @@ async def websocket_endpoint(websocket: WebSocket, match_id: str):
     except Exception as e:
         print(f"❌ Error crítico en WebSocket: {e}")
         await websocket.close()
+
+
+# ==========================================
+# 📼 TIME-SHIFTING / REPLAY API (PostgreSQL)
+# ==========================================
+@app.get("/match/{match_id}/tracking/history")
+def get_tracking_history(
+    match_id: str,
+    start_frame: int = Query(..., description="Frame inicial para el buffer de replay"),
+    end_frame: int = Query(..., description="Frame final para el buffer de replay")
+):
+    """
+    Recupera segmentos de tracking histórico (video) desde PostgreSQL.
+    Devuelve los frames ordenados y parseados, listos para la animación.
+    """
+    engine = get_db_engine()
+    results = []
+
+    try:
+        with engine.connect() as conn:
+            # Seleccionamos solo lo necesario para mantener la respuesta ligera
+            query = text("""
+                SELECT frame_idx, players_data
+                FROM match_tracking
+                WHERE match_id = :mid
+                  AND frame_idx BETWEEN :start AND :end
+                ORDER BY frame_idx ASC
+            """)
+
+            rows = conn.execute(query, {
+                "mid": match_id,
+                "start": start_frame,
+                "end": end_frame
+            }).fetchall()
+
+            for row in rows:
+                # Parsing seguro del JSON almacenado como texto en DB
+                p_data = row.players_data
+                if isinstance(p_data, str):
+                    p_data = json.loads(p_data)
+
+                frame_obj = {
+                    "frame_idx": row.frame_idx,
+                    "tracking": p_data
+                }
+                # Sanitización obligatoria antes de enviar al frontend
+                results.append(clean_nans(frame_obj))
+
+        return results
+
+    except Exception as e:
+        print(f"❌ Error fetching tracking history: {e}")
+        return {"error": "Error recuperando histórico de tracking", "details": str(e)}
+
+
+@app.get("/match/{match_id}/events/history")
+def get_events_history(match_id: str):
+    """
+    Recupera la lista COMPLETA de eventos del partido (Contexto).
+    No aplica filtros de tiempo: devuelve todo lo ocurrido hasta ahora.
+    """
+    engine = get_db_engine()
+    events = []
+
+    try:
+        with engine.connect() as conn:
+            query = text("""
+                SELECT *
+                FROM match_events
+                WHERE match_id = :mid
+                ORDER BY period ASC, minute ASC, second ASC
+            """)
+
+            rows = conn.execute(query, {"mid": match_id}).fetchall()
+
+            for row in rows:
+                r = row._mapping
+                # Mapeo consistente con el formato del WebSocket
+                evt = {
+                    "id": r['event_uuid'],
+                    "period": r['period'],
+                    "minute": r['minute'],
+                    "second": r['second'],
+                    "timestamp": str(r['timestamp']) if r['timestamp'] else None,
+
+                    # Estos son los que el Frontend busca desesperadamente:
+                    "event_type_id": r['event_type_id'],
+                    "event_type_name": r['event_type_name'],
+                    "type_id": r['type_id'],
+                    "type_name": r['type_name'],
+                    "outcome_id": r['outcome_id'],
+                    "outcome_name": r['outcome_name'],
+
+                    "player_id": r['player_id'],
+                    "player_name": r['player_name'],
+                    "team_name": r['team_name'],
+
+                    "location": [r['location_x'], r['location_y']],
+                    "pass": {
+                        "recipient": r['pass_recipient_name'],
+                        "length": r['pass_length']
+                    }
+                }
+                events.append(clean_nans(evt))
+
+        return events
+
+    except Exception as e:
+        print(f"❌ Error fetching events history: {e}")
+        return {"error": "Error recuperando histórico de eventos", "details": str(e)}

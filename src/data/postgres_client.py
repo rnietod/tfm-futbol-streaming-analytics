@@ -20,11 +20,11 @@ def get_db_engine():
     
     # Leemos la config local
     db_conf = config.get('cloudsql', {})
-    user = db_conf.get('db_user', 'postgres')
-    password = db_conf.get('db_pass', 'admin123')
-    host = db_conf.get('db_host', 'localhost')
-    dbname = db_conf.get('db_name', 'tactix_db')
-    port = "5432"
+    user = os.getenv('DB_USER', db_conf.get('db_user', 'postgres'))
+    password = os.getenv('DB_PASS', db_conf.get('db_pass', 'admin123'))
+    host = os.getenv('DB_HOST', db_conf.get('db_host', 'localhost'))
+    dbname = os.getenv('DB_NAME', db_conf.get('db_name', 'tactix_db'))
+    port = os.getenv('DB_PORT', "5432")
 
     # URL Estándar de PostgreSQL (sin drivers de Google)
     db_url = f"postgresql+pg8000://{user}:{password}@{host}:{port}/{dbname}"
