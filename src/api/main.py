@@ -182,7 +182,7 @@ async def websocket_endpoint(websocket: WebSocket, match_id: str):
 # ==========================================
 @app.get("/match/{match_id}/tracking/history")
 def get_tracking_history(
-    match_id: str, 
+    match_id: str,
     start_frame: int = Query(..., description="Frame inicial para el buffer de replay"),
     end_frame: int = Query(..., description="Frame final para el buffer de replay")
 ):
@@ -197,10 +197,10 @@ def get_tracking_history(
         with engine.connect() as conn:
             # Seleccionamos solo lo necesario para mantener la respuesta ligera
             query = text("""
-                SELECT frame_idx, players_data 
-                FROM match_tracking 
-                WHERE match_id = :mid 
-                  AND frame_idx BETWEEN :start AND :end 
+                SELECT frame_idx, players_data
+                FROM match_tracking
+                WHERE match_id = :mid
+                  AND frame_idx BETWEEN :start AND :end
                 ORDER BY frame_idx ASC
             """)
 
