@@ -205,15 +205,16 @@ def get_tracking_history(
             """)
 
             rows = conn.execute(query, {
-                "mid": match_id, 
-                "start": start_frame, 
+                "mid": match_id,
+                "start": start_frame,
                 "end": end_frame
             }).fetchall()
 
             for row in rows:
                 # Parsing seguro del JSON almacenado como texto en DB
                 p_data = row.players_data
-                if isinstance(p_data, str): p_data = json.loads(p_data)
+                if isinstance(p_data, str):
+                    p_data = json.loads(p_data)
 
                 frame_obj = {
                     "frame_idx": row.frame_idx,
@@ -258,7 +259,7 @@ def get_events_history(match_id: str):
                     "minute": r['minute'],
                     "second": r['second'],
                     "timestamp": str(r['timestamp']) if r['timestamp'] else None,
-                    
+
                     # Estos son los que el Frontend busca desesperadamente:
                     "event_type_id": r['event_type_id'],
                     "event_type_name": r['event_type_name'],
@@ -266,11 +267,11 @@ def get_events_history(match_id: str):
                     "type_name": r['type_name'],
                     "outcome_id": r['outcome_id'],
                     "outcome_name": r['outcome_name'],
-                    
+
                     "player_id": r['player_id'],
                     "player_name": r['player_name'],
                     "team_name": r['team_name'],
-                    
+
                     "location": [r['location_x'], r['location_y']],
                     "pass": {
                         "recipient": r['pass_recipient_name'],
