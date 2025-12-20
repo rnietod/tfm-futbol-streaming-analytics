@@ -35,15 +35,36 @@ def init_tables():
     CREATE TABLE IF NOT EXISTS match_events (
         event_uuid VARCHAR(50) PRIMARY KEY,
         match_id VARCHAR(50),
+        timestamp TIME,
         period INTEGER,
         minute INTEGER,
         second INTEGER,
+        
+        -- IDs Críticos para el Frontend
+        event_type_id INTEGER,
+        event_type_name VARCHAR(100),
+        type_id INTEGER,
         type_name VARCHAR(100),
+        outcome_id INTEGER,
         outcome_name VARCHAR(50),
+        
+        -- Datos de Jugador/Equipo
         team_id VARCHAR(50),
+        team_name VARCHAR(100),
         player_id VARCHAR(50),
-        x FLOAT, y FLOAT,
-        end_x FLOAT, end_y FLOAT,
+        player_name VARCHAR(100),
+        
+        -- Coordenadas
+        location_x FLOAT, location_y FLOAT,
+        end_location_x FLOAT, end_location_y FLOAT, end_location_z FLOAT,
+        
+        -- Detalles de Pase (Opcionales)
+        pass_length FLOAT,
+        pass_angle FLOAT,
+        pass_recipient_name VARCHAR(100),
+        pass_height_name VARCHAR(50),
+        body_part_name VARCHAR(50),
+        
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 

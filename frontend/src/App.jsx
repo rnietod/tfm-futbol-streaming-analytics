@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import FootballPitch from './components/FootballPitch'
+import { useMatchHistory } from './hooks/useMatchHistory';
 import tactixLogo from './assets/tactix-live.png'
 
 // --- UTILIDADES ---
@@ -184,16 +185,28 @@ const GhostMateTicker = () => (
 )
 
 // --- COMPONENTE: CONTROLES ---
-const PlaybackControls = ({ currentTime, isLive, onSeek, onToggleLive }) => (
+const PlaybackControls = ({ currentTime, isLive, isPlaying, currentFrame, maxFrame, onSeek, onToggleLive, onTogglePlay }) => (
   <div className="bg-cyber-panel/90 border-t border-cyber-neon p-4 flex items-center gap-6 rounded-t-xl mx-4 backdrop-blur-md">
     <div className="font-mono text-2xl text-cyber-neon w-32 text-center tabular-nums">
       {currentTime}
     </div>
-    <div className="flex gap-4 text-cyber-text text-2xl">
-      <button className="hover:text-white transition active:scale-95">⏮</button>
+    <div className="flex gap-4 text-cyber-text text-2xl items-center">
+      {/* Botón de Play/Pause solo visible si NO estamos en vivo */}
+      {!isLive && (
+        <button 
+          onClick={onTogglePlay}
+          className="hover:text-cyber-green transition active:scale-95 text-3xl flex items-center"
+          title={isPlaying ? "Pausar" : "Reproducir"}
+        >
+          {isPlaying ? "⏸" : "▶️"}
+        </button>
+      )}
+
+      <button className="hover:text-white transition active:scale-95 text-xl">⏮</button>
+
       <button 
         onClick={onToggleLive}
-        className={`text-xs font-bold px-3 py-1 rounded border flex items-center ${isLive ? 'bg-red-500 border-red-500 text-white' : 'border-cyber-neon text-cyber-neon hover:bg-cyber-neon hover:text-black'} transition`}
+        className={`text-xs font-bold px-3 py-1 rounded border flex items-center h-8 ${isLive ? 'bg-red-500 border-red-500 text-white' : 'border-cyber-neon text-cyber-neon hover:bg-cyber-neon hover:text-black'} transition`}
       >
         {isLive ? 'EN VIVO' : 'VOLVER AL VIVO'}
       </button>
@@ -202,64 +215,70 @@ const PlaybackControls = ({ currentTime, isLive, onSeek, onToggleLive }) => (
       <input 
         type="range" 
         min="0" 
-        max="100" 
-        defaultValue={100} 
-        onChange={(e) => onSeek(e.target.value)}
+        max={maxFrame || 100} 
+        value={currentFrame || 0}
+        onChange={(e) => onSeek(parseInt(e.target.value))}
         className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyber-neon hover:accent-cyber-green"
       />
+      <div className="absolute top-0 right-0 -mt-6 text-xs text-gray-500 font-mono">
+        Frame: {currentFrame} / {maxFrame}
+      </div>
     </div>
   </div>
 )
 
 // --- APP PRINCIPAL ---
 function App() {
-  const [history, setHistory] = useState([]); 
-  const [playbackIndex, setPlaybackIndex] = useState(-1);
+  // -----------------------------------------------------------
+  // 1. ESTADO MÍNIMO NECESARIO
+  // -----------------------------------------------------------
   const [isLive, setIsLive] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const [sliderValue, setSliderValue] = useState(0); 
+  const [maxFrame, setMaxFrame] = useState(0);
   
+  const [latestTracking, setLatestTracking] = useState(null);
+
   const [eventsList, setEventsList] = useState([]);
   const [latestEvent, setLatestEvent] = useState(null);
   const [status, setStatus] = useState("OFFLINE");
   const [playerMap, setPlayerMap] = useState({});
 
   const ws = useRef(null);
-  const MAX_BUFFER = 60000; 
 
-  // 1. Cargar Alineación
+  // -----------------------------------------------------------
+  // 2. EL CEREBRO: Hook de Historial
+  // -----------------------------------------------------------
+  const { 
+    displayData,   // La data lista para pintar (posiciones, balón...)
+    events: historyEvents, // La lista de eventos históricos
+    isLoadingHistory,
+    history: fullHistory
+  } = useMatchHistory("test_match", isLive, sliderValue, latestTracking);
+
+  // -----------------------------------------------------------
+  // 3. SINCRONIZACIÓN DE EVENTOS
+  // -----------------------------------------------------------
   useEffect(() => {
-    fetch('http://127.0.0.1:8000/match/test_match/metadata')
-      .then(res => res.json())
-      .then(data => {
-        if (data && !data.error) {
-          const map = {};
-          const players = Array.isArray(data) ? data : (data.players || Object.values(data));
-          if (Array.isArray(players)) {
-            players.forEach(p => {
-              const pid = String(p.id || p.player_id);
-              map[pid] = {
-                number: p.number || p.jersey_number || '?',
-                name: p.short_name || p.name || 'Unknown',
-                team_id: p.team_id
-              };
-            });
-            setPlayerMap(map);
-            console.log("✅ Alineación cargada");
-          }
-        }
-      })
-      .catch(err => console.warn("Esperando metadata...", err));
-  }, []);
+    if (historyEvents && historyEvents.length > 0) {
+      // Fusionamos con precaución para no borrar los que ya tengamos
+      setEventsList(prev => {
+        const existingIds = new Set(prev.map(e => e.id));
+        const newEvents = historyEvents.filter(e => !existingIds.has(e.id));
+        return [...newEvents, ...prev].sort((a,b) => (a.minute || 0) - (b.minute || 0));
+      });
+    }
+  }, [historyEvents]);
 
-  // 2. WebSocket (Con Diagnóstico)
+  // -----------------------------------------------------------
+  // 4. WEBSOCKET
+  // -----------------------------------------------------------
   useEffect(() => {
     console.log("🔌 Conectando WebSocket...");
     ws.current = new WebSocket("ws://127.0.0.1:8000/ws/match/test_match");
     
-    ws.current.onopen = () => {
-      console.log("✅ WebSocket Conectado");
-      setStatus("ONLINE");
-    };
-    
+    ws.current.onopen = () => setStatus("ONLINE");
     ws.current.onclose = () => setStatus("OFFLINE");
 
     ws.current.onmessage = (e) => {
@@ -267,25 +286,14 @@ function App() {
         const msg = JSON.parse(e.data);
 
         if (msg.type === "tracking") {
-          const newFrame = msg.payload;
-          setHistory(prev => {
-            const newHistory = [...prev, newFrame];
-            if (newHistory.length > MAX_BUFFER) newHistory.shift();
-            return newHistory;
-          });
+          setLatestTracking(msg.payload);
         } 
         else if (msg.type === "event") {
           const newEvent = msg.payload;
-          
           if (newEvent) {
             console.log("📩 Evento Recibido:", newEvent.event_type_name);
-            
             setLatestEvent(newEvent);
-            setEventsList(prev => {
-                const updatedList = [newEvent, ...prev]; 
-                return updatedList;
-            });
-            
+            setEventsList(prev => [newEvent, ...prev]); // Eventos sí los acumulamos visualmente
             setTimeout(() => setLatestEvent(null), 2000);
           }
         }
@@ -295,31 +303,122 @@ function App() {
     return () => ws.current?.close();
   }, []);
 
-  // 3. Loop de Visualización
+  // -----------------------------------------------------------
+  // 5. GESTIÓN DE FRAMES Y SINCRONIZACIÓN
+  // -----------------------------------------------------------
   useEffect(() => {
-    if (isLive) {
-      setPlaybackIndex(history.length - 1);
+    if (latestTracking?.frame) {
+      setMaxFrame(latestTracking.frame);
     }
-  }, [history.length, isLive]);
+  }, [latestTracking]);
 
+  // Sync automático en modo Live
+  useEffect(() => {
+    if (isLive && displayData?.frame) {
+      setSliderValue(displayData.frame);
+    }
+  }, [displayData, isLive]);
+
+  // -----------------------------------------------------------
+  // 6. MOTOR DE REPRODUCCIÓN (GAME LOOP)
+  // -----------------------------------------------------------
+  useEffect(() => {
+    let timeoutId;
+
+    if (!isLive && isPlaying) {
+      let delay = 40; // Default fallback (25fps)
+
+      if (fullHistory && fullHistory[sliderValue] && fullHistory[sliderValue + 1]) {
+        try {
+          const rawCurrent = fullHistory[sliderValue].timestamp;
+          const rawNext = fullHistory[sliderValue + 1].timestamp;
+
+          if (rawCurrent && rawNext) {
+              const tCurrent = new Date(rawCurrent.replace(' ', 'T')).getTime();
+              const tNext = new Date(rawNext.replace(' ', 'T')).getTime();
+              const diff = tNext - tCurrent;
+
+              // Validamos que la diferencia sea lógica (entre 0ms y 1000ms)
+              if (!isNaN(diff) && diff > 0) {
+                 delay = Math.min(diff, 1000); 
+              }
+          }
+        } catch (e) {
+          console.warn("Error calculando delay de frames:", e);
+        }
+      }
+
+      timeoutId = setTimeout(() => {
+        setSliderValue(prev => {
+          if (prev >= maxFrame) return prev;
+          return prev + 1;
+        });
+      }, delay);
+    }
+
+    return () => clearTimeout(timeoutId);
+  }, [sliderValue, isPlaying, isLive, maxFrame, fullHistory]);
+
+  // -----------------------------------------------------------
+  // 7. DETECTOR DE FIN DE REPRODUCCIÓN (Catch-up)
+  // -----------------------------------------------------------
+  useEffect(() => {
+    // Si estamos reproduciendo y alcanzamos al vivo, nos enganchamos
+    if (!isLive && isPlaying && sliderValue >= maxFrame) {
+      setIsLive(true);
+      setIsPlaying(false);
+    }
+  }, [sliderValue, maxFrame, isLive, isPlaying]);
+
+  // Handlers
   const handleSeek = (val) => {
     setIsLive(false);
-    const newIndex = Math.floor((val / 100) * (history.length - 1));
-    setPlaybackIndex(newIndex);
+    setIsPlaying(false); // Detener reproducción al arrastrar
+    setSliderValue(val);
   };
 
-  const currentFrame = history[playbackIndex] || null;
-  const liveFrame = history[history.length - 1] || null;
+  const handleTogglePlay = () => {
+    setIsPlaying(!isPlaying);
+  };
 
+  const handleGoLive = () => {
+    setIsLive(true);
+    setIsPlaying(false);
+  };
+
+  // -----------------------------------------------------------
+  // 8. Carga de Alineación (Sin cambios)
+  // -----------------------------------------------------------
+  useEffect(() => {
+    fetch('http://127.0.0.1:8000/match/test_match/metadata')
+      .then(res => res.json())
+      .then(data => {
+        if (data && !data.error) {
+          const map = {};
+          const players = Array.isArray(data) ? data : (data.players || []);
+          players.forEach(p => {
+             map[String(p.id)] = { 
+               number: p.number, name: p.short_name, team_id: p.team_id 
+             };
+          });
+          setPlayerMap(map);
+        }
+      })
+      .catch(e => console.warn(e));
+  }, []);
+
+  // -----------------------------------------------------------
+  // RENDER
+  // -----------------------------------------------------------
   return (
     <div className="bg-transparent text-cyber-text h-screen w-screen overflow-hidden flex flex-col font-sans selection:bg-cyber-neon selection:text-black relative">
-      
+
       {/* HEADER */}
       <header className="h-36 flex items-center justify-between px-16 border-b border-gray-800/30 z-20 relative">
         <div className="flex items-center">
           <img src={tactixLogo} alt="Tactix" className="h-44 w-auto object-contain drop-shadow-[0_0_20px_rgba(0,242,255,0.5)]" />
         </div>
-        
+
         <div className="absolute left-1/2 -translate-x-1/2 bottom-4 flex gap-2 h-12 items-end">
           {['ANÁLISIS', 'ESTADÍSTICAS', 'JUGADORES', 'ALERTAS'].map((tab, i) => (
             <button key={tab} className={`px-8 py-2 skew-x-[-20deg] border-b-4 font-bold text-lg transition-all flex items-center hover:scale-105 hover:shadow-neon ${i === 0 ? 'bg-cyber-panel/60 border-cyber-neon text-cyber-neon shadow-[0_0_20px_rgba(0,242,255,0.3)]' : 'border-transparent text-gray-500 hover:text-white hover:bg-gray-800/40'}`}>
@@ -330,11 +429,14 @@ function App() {
 
         <div className="flex flex-col items-end justify-center h-full gap-1 z-10">
           <div className="text-5xl font-mono text-cyber-neon font-bold drop-shadow-neon tracking-widest">
-            {formatTime(liveFrame?.timestamp)}
+            {formatTime(displayData?.timestamp)}
           </div>
-          <span className={`text-xs px-3 py-0.5 rounded-full font-bold tracking-widest uppercase ${status === 'ONLINE' ? 'bg-cyber-green text-black shadow-neon' : 'bg-red-500 text-white'}`}>
-            {status}
-          </span>
+          <div className="flex gap-2">
+            {isLoadingHistory && <span className="text-xs px-2 py-0.5 bg-yellow-500 text-black font-bold rounded animate-pulse">BUFFERING</span>}
+            <span className={`text-xs px-3 py-0.5 rounded-full font-bold tracking-widest uppercase ${status === 'ONLINE' ? 'bg-cyber-green text-black shadow-neon' : 'bg-red-500 text-white'}`}>
+              {status}
+            </span>
+          </div>
         </div>
       </header>
 
@@ -350,10 +452,10 @@ function App() {
         <div className="col-span-9 flex flex-col relative bg-cyber-panel/30 rounded-xl border border-cyber-neon/30 shadow-2xl overflow-hidden backdrop-blur-sm">
             <div className="absolute top-0 left-0 w-16 h-16 border-t-4 border-l-4 border-cyber-neon/50 rounded-tl-xl pointer-events-none"></div>
             <div className="absolute top-0 right-0 w-16 h-16 border-t-4 border-r-4 border-cyber-neon/50 rounded-tr-xl pointer-events-none"></div>
-            
+
             <div className="flex-1 flex items-center justify-center p-8">
               <FootballPitch 
-                matchState={currentFrame} 
+                matchState={displayData} 
                 latestEvent={latestEvent}
                 playerMap={playerMap} 
                 width={1100} 
@@ -363,10 +465,14 @@ function App() {
 
             <div className="mt-auto relative z-20">
               <PlaybackControls 
-                currentTime={formatTime(currentFrame?.timestamp)} 
+                currentTime={formatTime(displayData?.timestamp)} 
                 isLive={isLive}
+                isPlaying={isPlaying} // Prop Nueva
+                currentFrame={sliderValue} 
+                maxFrame={maxFrame} 
                 onSeek={handleSeek}
-                onToggleLive={() => setIsLive(true)}
+                onToggleLive={handleGoLive}
+                onTogglePlay={handleTogglePlay} // Prop Nueva
               />
             </div>
         </div>

@@ -241,7 +241,7 @@ def get_events_history(match_id: str):
     try:
         with engine.connect() as conn:
             query = text("""
-                SELECT event_uuid, period, minute, second, type_name, player_id, x, y
+                SELECT *
                 FROM match_events
                 WHERE match_id = :mid
                 ORDER BY period ASC, minute ASC, second ASC
@@ -250,15 +250,32 @@ def get_events_history(match_id: str):
             rows = conn.execute(query, {"mid": match_id}).fetchall()
 
             for row in rows:
+                r = row._mapping
                 # Mapeo consistente con el formato del WebSocket
                 evt = {
-                    "id": row.event_uuid,
-                    "period": row.period,
-                    "minute": row.minute,
-                    "second": row.second,
-                    "event_type_name": row.type_name,
-                    "player_id": row.player_id,
-                    "location": {"x": row.x, "y": row.y}
+                    "id": r['event_uuid'],
+                    "period": r['period'],
+                    "minute": r['minute'],
+                    "second": r['second'],
+                    "timestamp": str(r['timestamp']) if r['timestamp'] else None,
+                    
+                    # Estos son los que el Frontend busca desesperadamente:
+                    "event_type_id": r['event_type_id'],
+                    "event_type_name": r['event_type_name'],
+                    "type_id": r['type_id'],
+                    "type_name": r['type_name'],
+                    "outcome_id": r['outcome_id'],
+                    "outcome_name": r['outcome_name'],
+                    
+                    "player_id": r['player_id'],
+                    "player_name": r['player_name'],
+                    "team_name": r['team_name'],
+                    
+                    "location": [r['location_x'], r['location_y']],
+                    "pass": {
+                        "recipient": r['pass_recipient_name'],
+                        "length": r['pass_length']
+                    }
                 }
                 events.append(clean_nans(evt))
 
