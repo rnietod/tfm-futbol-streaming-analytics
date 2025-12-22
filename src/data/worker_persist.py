@@ -115,7 +115,7 @@ class PersistenceWorker:
             with self.db_engine.begin() as conn:
                 conn.execute(text("""
                     INSERT INTO match_events (
-                        event_uuid, match_id, timestamp, period, minute, second,
+                        event_uuid, event_index, match_id, timestamp, period, minute, second,
                         event_type_id, event_type_name, type_id, type_name, 
                         outcome_id, outcome_name,
                         team_name, player_id, player_name,
@@ -125,7 +125,7 @@ class PersistenceWorker:
                         pass_height_name, body_part_name
                     )
                     VALUES (
-                        :uuid, :mid, :ts, :per, :min, :sec,
+                        :uuid, :idx, :mid, :ts, :per, :min, :sec,
                         :et_id, :et_name, :t_id, :t_name, 
                         :o_id, :o_name,
                         :team, :pid, :pname,
@@ -137,6 +137,7 @@ class PersistenceWorker:
                     ON CONFLICT (event_uuid) DO NOTHING
                 """), {
                     "uuid": ev.get('id') or f"{MATCH_ID}-{time.time()}",
+                    "idx": ev.get('index'),
                     "mid": MATCH_ID,
                     "ts": ev.get('timestamp'),
                     "per": ev.get('period'),

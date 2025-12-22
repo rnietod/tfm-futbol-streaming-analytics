@@ -34,6 +34,7 @@ def init_tables():
     -- 3. EVENTOS (Analytics)
     CREATE TABLE IF NOT EXISTS match_events (
         event_uuid VARCHAR(50) PRIMARY KEY,
+        event_index INTEGER,
         match_id VARCHAR(50),
         timestamp TIME,
         period INTEGER,

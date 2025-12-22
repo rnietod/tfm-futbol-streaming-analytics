@@ -157,6 +157,7 @@ class SimulationEngine:
 
                 # Lista exacta de columnas solicitadas
                 target_columns = [
+                    "id", "index",
                     "timestamp", "period", "minute", "event_type_name", "event_type_id",
                     "team_name", "player_name", "location_x", "location_y",
                     "end_location_y", "end_location_x", "end_location_z",
