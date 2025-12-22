@@ -25,7 +25,10 @@ const EventFeed = ({ events = [] }) => {
       evt.event_type_id && ALLOWED_IDS.includes(evt.event_type_id)
     );
 
-    // 2. APLANAMIENTO Y EXPANSIÓN
+    // 2. ORDENAMIENTO
+    relevantEvents.sort((a, b) => (b.index || 0) - (a.index || 0));
+
+    // 3. APLANAMIENTO Y EXPANSIÓN
     return relevantEvents.flatMap((evt) => {
       const typeId = evt.event_type_id;   // Ej: 16 (Shot)
       const subTypeId = evt.type_id;      // Ej: 88 (Penalty), 26 (Goal Conceded)
@@ -43,7 +46,7 @@ const EventFeed = ({ events = [] }) => {
       itemsToRender.push({
         ...evt,
         isVirtualGoal: false, // Marca: Es el evento de la acción
-        uniqueKey: `${evt.id}_action` // Key única para React
+        uniqueKey: evt.id
       });
 
       // REGLA 3: Si es Tiro y terminó en Gol -> Generar evento Virtual de Gol
@@ -52,7 +55,7 @@ const EventFeed = ({ events = [] }) => {
           ...evt,
           isVirtualGoal: true, // Marca: Es la celebración del gol
           event_type_name: 'GOAL !!!', // Forzamos el nombre
-          uniqueKey: `${evt.id}_goal_celebration`
+          uniqueKey: `${evt.id}_goal`
         });
       }
 
@@ -246,6 +249,7 @@ function App() {
   const [playerMap, setPlayerMap] = useState({});
 
   const ws = useRef(null);
+  const lastEventIndex = useRef(-1);
 
   // -----------------------------------------------------------
   // 2. EL CEREBRO: Hook de Historial
@@ -291,9 +295,20 @@ function App() {
         else if (msg.type === "event") {
           const newEvent = msg.payload;
           if (newEvent) {
+            // --- AUDITORÍA DE RED (PACKET LOSS) ---
+            if (lastEventIndex.current !== -1 && newEvent.index !== lastEventIndex.current + 1) {
+              console.warn(
+                `⚠️ PACKET LOSS DETECTADO: Salto de secuencia. Esperado: ${lastEventIndex.current + 1}, Recibido: ${newEvent.index}`
+              );
+              // Aquí podrías disparar una lógica de recuperación (fetch gap) en el futuro
+            }
+            // Actualizamos el último índice conocido
+            lastEventIndex.current = newEvent.index;
+            // --------------------------------------
+
             console.log("📩 Evento Recibido:", newEvent.event_type_name);
             setLatestEvent(newEvent);
-            setEventsList(prev => [newEvent, ...prev]); // Eventos sí los acumulamos visualmente
+            setEventsList(prev => [newEvent, ...prev]); 
             setTimeout(() => setLatestEvent(null), 2000);
           }
         }

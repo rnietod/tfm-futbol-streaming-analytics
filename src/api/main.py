@@ -255,6 +255,7 @@ def get_events_history(match_id: str):
                 # Mapeo consistente con el formato del WebSocket
                 evt = {
                     "id": r['event_uuid'],
+                    "index": r['event_index'],
                     "period": r['period'],
                     "minute": r['minute'],
                     "second": r['second'],
