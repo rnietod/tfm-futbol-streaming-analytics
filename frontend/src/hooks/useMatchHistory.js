@@ -132,6 +132,6 @@ export const useMatchHistory = (matchId, isLive, requestedFrame, liveData) => {
         displayData,      // Los datos de posición para pintar AHORA
         events,           // La lista completa de eventos
         isLoadingHistory,  // Para mostrar un spinner si estamos buffereando
-        history: frameBuffer.current
+        historyRef: frameBuffer
     };
 };
