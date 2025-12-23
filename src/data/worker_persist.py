@@ -88,8 +88,9 @@ class PersistenceWorker:
                 players = []
                 for p in data['players']:
                     players.append({
-                        "mid": MATCH_ID, "pid": str(p['id']),
-                        "tid": str(p['team_id']),
+                        "mid": MATCH_ID,
+                        "pid": int(p['id']),
+                        "tid": int(p['team_id']),
                         "name": p['short_name'],
                         "num": p['number'],
                         "pos": p['role']
@@ -154,7 +155,7 @@ class PersistenceWorker:
 
                     # Contexto
                     "team": ev.get('team_name'),
-                    "pid": str(ev.get('player_id')) if ev.get('player_id') else None,
+                    "pid": int(ev.get('player_id')) if ev.get('player_id') else None,
                     "pname": ev.get('player_name'),
 
                     # Coordenadas

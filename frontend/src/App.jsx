@@ -251,6 +251,7 @@ function App() {
   const ws = useRef(null);
   const lastEventIndex = useRef(-1);
 
+
   // -----------------------------------------------------------
   // 2. EL CEREBRO: Hook de Historial
   // -----------------------------------------------------------
@@ -258,7 +259,7 @@ function App() {
     displayData,   // La data lista para pintar (posiciones, balón...)
     events: historyEvents, // La lista de eventos históricos
     isLoadingHistory,
-    history: fullHistory
+    historyRef
   } = useMatchHistory("test_match", isLive, sliderValue, latestTracking);
 
   // -----------------------------------------------------------
@@ -329,8 +330,9 @@ function App() {
 
   // Sync automático en modo Live
   useEffect(() => {
-    if (isLive && displayData?.frame) {
-      setSliderValue(displayData.frame);
+    // REGLA DE ORO: Solo el modo LIVE tiene permiso para mover el slider automáticamente.
+    if (isLive && displayData?.frame !== undefined) {
+       setSliderValue(prev => (prev !== displayData.frame ? displayData.frame : prev));
     }
   }, [displayData, isLive]);
 
@@ -343,23 +345,24 @@ function App() {
     if (!isLive && isPlaying) {
       let delay = 40; // Default fallback (25fps)
 
-      if (fullHistory && fullHistory[sliderValue] && fullHistory[sliderValue + 1]) {
+      const buffer = historyRef.current || {}; 
+
+      if (buffer[sliderValue] && buffer[sliderValue + 1]) {
         try {
-          const rawCurrent = fullHistory[sliderValue].timestamp;
-          const rawNext = fullHistory[sliderValue + 1].timestamp;
+          const rawCurrent = buffer[sliderValue].timestamp;
+          const rawNext = buffer[sliderValue + 1].timestamp;
 
           if (rawCurrent && rawNext) {
               const tCurrent = new Date(rawCurrent.replace(' ', 'T')).getTime();
               const tNext = new Date(rawNext.replace(' ', 'T')).getTime();
               const diff = tNext - tCurrent;
 
-              // Validamos que la diferencia sea lógica (entre 0ms y 1000ms)
               if (!isNaN(diff) && diff > 0) {
                  delay = Math.min(diff, 1000); 
               }
           }
         } catch (e) {
-          console.warn("Error calculando delay de frames:", e);
+          console.warn("Error calculando delay loop:", e);
         }
       }
 
@@ -371,8 +374,8 @@ function App() {
       }, delay);
     }
 
-    return () => clearTimeout(timeoutId);
-  }, [sliderValue, isPlaying, isLive, maxFrame, fullHistory]);
+    return () => clearTimeout(timeoutId);;
+  }, [sliderValue, isPlaying, isLive, maxFrame, historyRef]);
 
   // -----------------------------------------------------------
   // 7. DETECTOR DE FIN DE REPRODUCCIÓN (Catch-up)
@@ -405,21 +408,38 @@ function App() {
   // 8. Carga de Alineación (Sin cambios)
   // -----------------------------------------------------------
   useEffect(() => {
-    fetch('http://127.0.0.1:8000/match/test_match/metadata')
-      .then(res => res.json())
-      .then(data => {
-        if (data && !data.error) {
-          const map = {};
-          const players = Array.isArray(data) ? data : (data.players || []);
-          players.forEach(p => {
-             map[String(p.id)] = { 
-               number: p.number, name: p.short_name, team_id: p.team_id 
-             };
-          });
-          setPlayerMap(map);
-        }
-      })
-      .catch(e => console.warn(e));
+    const fetchMetadata = () => {
+      fetch('http://127.0.0.1:8000/match/test_match/metadata')
+        .then(res => res.json())
+        .then(data => {
+          // PASO A: Validación básica de respuesta
+          if (!data || data.error) {
+             console.warn("⚠️ Metadata inválida:", data?.error);
+             return; 
+          }
+
+            const players = Array.isArray(data) ? data : (data.players || []);
+
+            if (players.length === 0) {
+              console.warn("⚠️ Recibida metadata vacía. Manteniendo datos anteriores.");
+              return; 
+            }
+
+            const map = {};
+            players.forEach(p => {
+              map[String(p.player_id)] = { 
+                number: p.number, name: p.short_name, team_id: p.team_id 
+              };
+            });
+            setPlayerMap(map);
+          })
+        .catch(e => console.warn("Error silencioso en metadata:",e));
+    };
+    fetchMetadata();
+
+    const intervalId = setInterval(fetchMetadata, 60000);
+    return () => clearInterval(intervalId);
+
   }, []);
 
   // -----------------------------------------------------------

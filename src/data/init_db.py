@@ -8,12 +8,17 @@ def init_tables():
     engine = get_db_engine()
     
     ddl = """
+    DROP TABLE IF EXISTS match_tracking CASCADE;
+    DROP TABLE IF EXISTS match_events CASCADE;
+    DROP TABLE IF EXISTS match_players CASCADE;
+    DROP TABLE IF EXISTS matches CASCADE;
+
     -- 1. PARTIDOS (Metadata)
     CREATE TABLE IF NOT EXISTS matches (
         match_id VARCHAR(50) PRIMARY KEY,
-        home_team_id VARCHAR(50),
+        home_team_id INTEGER,
         home_team_name VARCHAR(100),
-        away_team_id VARCHAR(50),
+        away_team_id INTEGER,
         away_team_name VARCHAR(100),
         match_date TIMESTAMP,
         stadium VARCHAR(100),
@@ -23,8 +28,8 @@ def init_tables():
     -- 2. JUGADORES (Alineación)
     CREATE TABLE IF NOT EXISTS match_players (
         match_id VARCHAR(50),
-        player_id VARCHAR(50),
-        team_id VARCHAR(50),
+        player_id INTEGER,
+        team_id INTEGER,
         name VARCHAR(100),
         dorsal INTEGER,
         position VARCHAR(10),
