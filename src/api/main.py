@@ -116,9 +116,9 @@ def get_match_metadata(match_id: str):
                 FROM match_players
                 WHERE match_id = :mid
             """)
-            
+
             result = conn.execute(query, {"mid": match_id}).fetchall()
-            
+
             # 2. Validación de Negocio
             if not result:
                 # Si Postgres no tiene datos, es que el proceso de carga falló antes
@@ -135,7 +135,7 @@ def get_match_metadata(match_id: str):
                     "number": row.dorsal,           # Dorsal
                     "role": row.position            # Posición (GK, etc)
                 })
-            
+
             print(f"✅ Metadata servida desde SQL: {len(players_list)} jugadores.")
             return {"players": players_list}
 

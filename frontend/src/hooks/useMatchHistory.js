@@ -21,7 +21,8 @@ export const useMatchHistory = (matchId, isLive, requestedFrame, liveData) => {
     // Cache de frames: { [frameIdx]: data }
     // Usamos useRef para el buffer masivo para no re-renderizar el componente 500 veces al hacer fetch
     const frameBuffer = useRef({});
-    
+    const pendingRequests = useRef(new Set());
+
     // Control de peticiones
     const fetchTimeout = useRef(null);
     const abortController = useRef(null);
@@ -58,19 +59,32 @@ export const useMatchHistory = (matchId, isLive, requestedFrame, liveData) => {
     // 2. GESTIÓN DEL BUFFER DE TRACKING (VIDEO)
     // ==========================================
     const fetchTrackingChunk = useCallback(async (startFrame) => {
+        // 1. Evitar peticiones duplicadas para el mismo chunk
+        // Normalizamos el startFrame para que siempre pida bloques alineados (0, 500, 1000...)
+        // Esto evita pedir frame 400-900 y luego 401-901.
+        const chunkKey = Math.floor(startFrame / BUFFER_SIZE) * BUFFER_SIZE; // O usa startFrame directo si prefieres exactitud
+
+        if (pendingRequests.current.has(chunkKey)) {
+            return; // Ya hay una petición en vuelo para este bloque, calma.
+        }
+
+        // Marcamos como pendiente
+        pendingRequests.current.add(chunkKey);
+        setIsLoadingHistory(true);
+
         // Cancelar petición anterior si existe (Evita Race Conditions)
         if (abortController.current) {
             abortController.current.abort();
         }
         abortController.current = new AbortController();
 
-        setIsLoadingHistory(true);
-
         try {
             const endFrame = startFrame + BUFFER_SIZE;
             const url = `${API_URL}/match/${matchId}/tracking/history?start_frame=${startFrame}&end_frame=${endFrame}`;
             
             const res = await fetch(url, { signal: abortController.current.signal });
+            if (!res.ok) throw new Error("Network response was not ok");
+
             const data = await res.json();
 
             // Llenar el buffer (Data Merging)
@@ -87,9 +101,11 @@ export const useMatchHistory = (matchId, isLive, requestedFrame, liveData) => {
                 console.error("Error fetching tracking history:", err);
             }
         } finally {
+            // Limpieza
+            pendingRequests.current.delete(chunkKey);
             setIsLoadingHistory(false);
         }
-    }, [matchId]);
+    }, [matchId, requestedFrame]);
 
 
     // ==========================================
@@ -97,41 +113,44 @@ export const useMatchHistory = (matchId, isLive, requestedFrame, liveData) => {
     // ==========================================
     useEffect(() => {
         // MODO LIVE: Paso directo, ignoramos buffer y API
-        if (isLive) {
-            if (liveData) {
+        if (isLive && liveData) {
                 setDisplayData(liveData);
-                // Opcional: Guardar lo live en buffer por si el usuario retrocede inmediatamente
-                const currentIdx = liveData.frame; // Asumiendo que liveData trae 'frame'
-                if (currentIdx) frameBuffer.current[currentIdx] = liveData;
-            }
-            return;
+                // Guardamos en buffer por si el usuario retrocede 1 segundo después
+            if (liveData.frame) frameBuffer.current[liveData.frame] = liveData;
         }
+    }, [isLive, liveData]);
 
         // MODO HISTORIA: Chequeo de Buffer
+        useEffect(() => {
+        // Si estamos en vivo, este efecto NO debe hacer nada.
+        // Esto evita que la llegada de `liveData` reinicie el timer del fetch histórico.
+        if (isLive) return;
+
         const cachedFrame = frameBuffer.current[requestedFrame];
 
         if (cachedFrame) {
-            // A. HIT: Tenemos el dato en memoria
             setDisplayData(cachedFrame);
         } else {
-            // B. MISS: Necesitamos hacer fetch (con Debounce)
-            // No mostramos nada o mostramos un loader/estado anterior
-
-            // Limpiar timeout anterior (Debounce)
+            // MISS: Necesitamos fetch. Usamos Debounce.
             if (fetchTimeout.current) clearTimeout(fetchTimeout.current);
 
             fetchTimeout.current = setTimeout(() => {
+                // Alineamos la petición para optimizar caché (opcional, pero recomendado)
+                // const alignedFrame = Math.floor(requestedFrame / 100) * 100; 
                 fetchTrackingChunk(requestedFrame);
             }, DEBOUNCE_MS);
         }
 
-    }, [isLive, requestedFrame, liveData, fetchTrackingChunk]);
+        return () => {
+             if (fetchTimeout.current) clearTimeout(fetchTimeout.current);
+        };
+    }, [isLive, requestedFrame, fetchTrackingChunk]);
 
 
     return {
-        displayData,      // Los datos de posición para pintar AHORA
-        events,           // La lista completa de eventos
-        isLoadingHistory,  // Para mostrar un spinner si estamos buffereando
-        historyRef: frameBuffer
+        displayData,
+        events,
+        isLoadingHistory,
+        historyRef: frameBuffer // Exponemos la ref para el loop de App.jsx
     };
 };

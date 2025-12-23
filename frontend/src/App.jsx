@@ -251,6 +251,7 @@ function App() {
   const ws = useRef(null);
   const lastEventIndex = useRef(-1);
 
+
   // -----------------------------------------------------------
   // 2. EL CEREBRO: Hook de Historial
   // -----------------------------------------------------------
@@ -329,8 +330,9 @@ function App() {
 
   // Sync automático en modo Live
   useEffect(() => {
-    if (isLive && displayData?.frame) {
-      setSliderValue(displayData.frame);
+    // REGLA DE ORO: Solo el modo LIVE tiene permiso para mover el slider automáticamente.
+    if (isLive && displayData?.frame !== undefined) {
+       setSliderValue(prev => (prev !== displayData.frame ? displayData.frame : prev));
     }
   }, [displayData, isLive]);
 
