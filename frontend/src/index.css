@@ -2,25 +2,55 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  background-color: #050a10; 
-  color: #e2e8f0;
-  margin: 0;
-  padding: 0;
+/* * TACTIX GLOBAL STYLES
+ */
 
-  /* TRUCO PRO: Capa de oscurecimiento + Imagen de fondo */
-  background-image: 
-    linear-gradient(rgba(5, 10, 20, 0.2), rgba(5, 10, 20, 0.2)),
-    url('/cyber-bg.png'); /* Tu imagen */
+body {
+  @apply min-h-screen bg-background text-foreground antialiased selection:bg-primary/30 selection:text-primary-foreground;
   
+  /* * TÉCNICA "DEEP FIELD":
+   * 1. Capa Gradiente: Un lavado oscuro (rgba 9,9,11 -> Zinc-950) al 90% de opacidad.
+   */
+  background-image: 
+    linear-gradient(to bottom, rgba(9, 9, 11, 0.95), rgba(9, 9, 11, 0.85)),
+    url('/cyber-bg.png');
+    
   background-size: cover;
   background-position: center;
   background-attachment: fixed;
-  background-blend-mode: normal; 
+  background-repeat: no-repeat;
 }
 
-/* Scrollbar (Sin cambios) */
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #0b1116; }
-::-webkit-scrollbar-thumb { background: #151f2b; border: 1px solid #334155; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #00f2ff; }
+@layer utilities {
+  /* * TACTIX GLASS SYSTEM
+   * Paneles flotantes sobre el campo de juego.
+   */
+  .tactix-glass {
+    @apply bg-zinc-950/60 backdrop-blur-xl border border-white/10 shadow-2xl;
+  }
+  
+  /* * TACTIX CARD
+   * Para elementos individuales dentro de los paneles.
+   */
+  .tactix-card {
+    @apply bg-zinc-900/50 hover:bg-zinc-800/50 transition-colors border border-white/5 rounded-lg;
+  }
+
+  /* Utilidad para textos secundarios */
+  .text-muted {
+    @apply text-zinc-400;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+
+  /* Nuevo estilo: Tactix Clean (Transparente total) */
+  .tactix-clean {
+    @apply bg-transparent border-none shadow-none;
+  }
+}
