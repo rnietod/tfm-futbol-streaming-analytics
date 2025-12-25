@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Chip, Slider, Button } from "@nextui-org/react";
 import { 
   Wifi, WifiOff, Activity, Play, Pause, SkipBack, 
-  FastForward, Radio, BrainCircuit, TrendingUp, Users // Iconos
+  FastForward, Radio, BrainCircuit, TrendingUp, Users, LayoutGrid
 } from 'lucide-react';
 import FootballPitch from './components/FootballPitch';
+import GhostTicker from './components/GhostTicker';
 import { useMatchHistory } from './hooks/useMatchHistory';
 import tactixLogo from './assets/tactix-live.png';
 
@@ -95,16 +96,18 @@ const EventFeed = ({ events = [] }) => {
   };
 
   return (
-    <div className="h-full flex flex-col overflow-hidden pointer-events-auto pl-2">
-      {/* HEADER INTEGRADO: Texto simple, sin bordes ni fondos */}
-      <div className="flex items-center gap-2 mb-2 opacity-80">
-          <Activity size={12} className="text-primary animate-pulse" />
-          <h3 className="text-[10px] font-bold tracking-[0.2em] uppercase text-zinc-400">
-            Live Feed
-          </h3>
+    <div className="h-full flex flex-col bg-zinc-900/40 backdrop-blur-xl border-r border-white/5">
+      {/* HEADER FEED */}
+      <div className="p-3 border-b border-white/5 flex items-center justify-between bg-zinc-900/50">
+          <div className="flex items-center gap-2">
+            <Activity size={14} className="text-primary" />
+            <span className="text-[10px] font-bold tracking-widest text-zinc-300 uppercase">Live Events</span>
+          </div>
+          <span className="text-[9px] bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-400 font-mono">{feedItems.length}</span>
       </div>
 
-      <ul className="flex-1 overflow-y-auto space-y-2 no-scrollbar pr-2 fade-mask">
+      {/* LISTA CON SCROLL */}
+      <ul className="flex-1 overflow-y-auto p-2 space-y-0 relative [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         {feedItems.map((item) => {
            const rawType = item.isVirtualGoal ? "GOAL !!!" : (item.event_type_name || item.type_name || "EVENTO");
            const rawPlayer = item.player_name || item.Player || "";
@@ -113,8 +116,13 @@ const EventFeed = ({ events = [] }) => {
            const timeFormatted = formatMatchTime(rawMinute);
 
            return (
-            <li key={item.uniqueKey} className="flex items-start gap-3 group">
-              <div className={`mt-0.5 text-base leading-none drop-shadow-md ${item.isVirtualGoal ? 'animate-bounce' : 'group-hover:scale-110 transition-transform'}`}>
+            <li key={item.uniqueKey} 
+                className="relative flex items-start gap-3 p-2 rounded-lg transition-all duration-200 hover:bg-white/5 border border-transparent hover:border-white/5 group"
+            >
+              {/* Timeline Line (Visual Candy) */}
+              <div className="absolute left-[19px] top-8 bottom-[-8px] w-[1px] bg-zinc-800 group-last:hidden" />
+
+              <div className={`mt-0.5 relative z-10 text-base leading-none drop-shadow-md ${item.isVirtualGoal ? 'animate-bounce' : 'group-hover:scale-110 transition-transform'}`}>
                 {icon}
               </div>
               
@@ -123,30 +131,30 @@ const EventFeed = ({ events = [] }) => {
                     <span className={`text-[10px] font-bold uppercase tracking-wider truncate ${color}`}>
                         {rawType}
                     </span>
-                    <span className="font-mono text-zinc-500 text-[10px]">
+                    <span className="font-mono text-zinc-500 text-[9px] bg-black/30 px-1 rounded">
                         {timeFormatted}
                     </span>
                 </div>
                 
-                <div className="flex items-center gap-2">
-                    {rawPlayer && (
-                    <span className={`text-xs font-medium truncate ${item.isVirtualGoal ? 'text-white' : 'text-zinc-300'}`}>
+                {rawPlayer && (
+                    <span className={`text-xs font-medium truncate mt-0.5 ${item.isVirtualGoal ? 'text-white' : 'text-zinc-400 group-hover:text-zinc-200'}`}>
                         {rawPlayer}
                     </span>
-                    )}
-                    {!item.isVirtualGoal && item.type_id === 88 && item.event_type_id === 16 && (
-                        <Chip size="sm" color="warning" variant="flat" classNames={{base: "h-4 px-0", content: "text-[9px] px-1"}}>PENALTY</Chip>
-                    )}
-                </div>
+                )}
+                {!item.isVirtualGoal && item.type_id === 88 && item.event_type_id === 16 && (
+                    <div className="mt-1">
+                        <Chip size="sm" color="warning" variant="flat" classNames={{base: "h-3 px-0", content: "text-[8px] px-1 uppercase font-bold"}}>Penalty</Chip>
+                    </div>
+                )}
               </div>
             </li>
           )
         })}
         
         {feedItems.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-zinc-600 gap-2">
-            <Activity size={32} className="opacity-20" />
-            <span className="text-xs">Waiting for data...</span>
+          <div className="flex flex-col items-center justify-center h-32 text-zinc-600 gap-2 opacity-50">
+            <Activity size={24} />
+            <span className="text-[10px] uppercase tracking-wider">Waiting for events...</span>
           </div>
         )}
       </ul>
@@ -154,96 +162,39 @@ const EventFeed = ({ events = [] }) => {
   )
 }
 
-// --- COMPONENTE: GHOST MATE (Restaurado) ---
-// Este es el ticker de predicciones/apuestas, separado de la IA.
-const GhostMateTicker = () => (
-  <div className="tactix-clean p-2 pointer-events-auto h-full flex flex-col justify-center relative group">
-    
-    {/* Header Integrado */}
-    <div className="flex items-center justify-end gap-2 mb-4 z-10 opacity-90">
-        <h3 className="text-[10px] font-bold tracking-[0.2em] uppercase text-zinc-400 text-right">
-          GHOST MATE <span className="text-danger">🧬 AI</span>
-        </h3>
-        <div className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse shadow-[0_0_8px_rgba(243,18,96,0.8)]" />
-    </div>
-    
-    <div className="space-y-6 z-10">
-      {/* Métrica 1: Julián Álvarez */}
-      <div className="flex flex-col items-end gap-1">
-        <div className="flex justify-between w-full items-end">
-             {/* Sparkline SVG: Area Chart (Positivo Verde / Negativo Rojo) */}
-             <div className="w-24 h-10 relative">
-                <svg viewBox="0 0 100 40" className="w-full h-full overflow-visible drop-shadow-lg">
-                    {/* Eje Central */}
-                    <line x1="0" y1="20" x2="100" y2="20" stroke="#52525b" strokeWidth="0.5" strokeDasharray="2 2" />
-                    
-                    {/* Area Verde (Positiva - Arriba del eje 20) */}
-                    <path d="M0 20 C10 15, 20 5, 30 8 C35 10, 40 20, 40 20 Z" fill="rgba(23, 201, 100, 0.5)" stroke="none" />
-                    <path d="M60 20 C70 15, 80 2, 90 10 C95 15, 100 20, 100 20 Z" fill="rgba(23, 201, 100, 0.5)" stroke="none" />
-
-                    {/* Area Roja (Negativa - Abajo del eje 20) */}
-                    <path d="M40 20 C45 25, 50 35, 55 30 C58 25, 60 20, 60 20 Z" fill="rgba(243, 18, 96, 0.5)" stroke="none" />
-
-                    {/* Línea de Tendencia (Blanca suave) */}
-                    <path d="M0 20 C10 15, 20 5, 30 8 C35 10, 40 20, 40 20 C45 25, 50 35, 55 30 C58 25, 60 20, 60 20 C70 15, 80 2, 90 10 C95 15, 100 20, 100 20" 
-                          fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.8" />
-                </svg>
-             </div>
-
-             <div className="text-right">
-                <div className="text-xs font-bold text-zinc-100">J. ÁLVAREZ</div>
-                <div className="text-[9px] text-zinc-500 uppercase tracking-wider">Perf. Deviation</div>
-             </div>
-        </div>
-        <span className="text-success font-mono font-bold text-lg leading-none drop-shadow-md">▲ +3.5</span>
-      </div>
-      
-    </div>
-  </div>
-)
-
 // --- COMPONENTE: CONTROLES ---
 const PlaybackControls = ({ currentTime, isLive, isPlaying, currentFrame, maxFrame, onSeek, onToggleLive, onTogglePlay }) => (
-  <div className="tactix-glass px-6 py-3 rounded-xl flex items-center gap-6 w-full max-w-4xl mx-auto pointer-events-auto backdrop-blur-2xl border-t border-white/10">
+  // CAMBIO: Estilos ajustados para vivir dentro del grid (ancho relativo, borde completo redondeado)
+  <div className="w-full max-w-2xl mx-auto flex items-center gap-4 px-6 py-3 mt-4 rounded-2xl border border-white/10 bg-zinc-950/80 backdrop-blur-xl shadow-2xl">
     
-    {/* Time Display */}
-    <div className="flex flex-col items-center min-w-[80px]">
-        <span className="font-mono text-xl font-bold text-white tabular-nums tracking-wider">{currentTime}</span>
-        <span className="text-[9px] text-zinc-500 uppercase tracking-widest">Match Time</span>
-    </div>
-
-    {/* Controls */}
+    {/* Botones */}
     <div className="flex items-center gap-2">
-        <Button 
-            isIconOnly variant="light" size="sm" 
-            className="text-zinc-400 hover:text-white"
-        >
-            <SkipBack size={18} />
-        </Button>
-        
         {!isLive && (
             <Button 
-                isIconOnly radius="full" 
-                className={isPlaying ? "bg-zinc-800 text-warning" : "bg-primary text-white shadow-[0_0_15px_rgba(0,111,238,0.4)]"}
+                isIconOnly radius="full" size="sm" variant="flat"
+                className={isPlaying ? "bg-zinc-800 text-warning" : "bg-primary/20 text-primary hover:bg-primary hover:text-white"}
                 onPress={onTogglePlay}
             >
-                {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
+                {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
             </Button>
         )}
-
         <Button 
             size="sm" variant={isLive ? "solid" : "bordered"} 
             color={isLive ? "danger" : "default"}
-            className={`font-bold min-w-[100px] ${isLive ? 'shadow-[0_0_15px_rgba(243,18,96,0.4)]' : 'text-zinc-400 border-zinc-700'}`}
-            startContent={isLive ? <Radio size={14} className="animate-pulse" /> : <FastForward size={14} />}
+            className={`font-bold h-8 text-[10px] tracking-wider ${isLive ? 'shadow-[0_0_10px_rgba(243,18,96,0.4)]' : 'text-zinc-500 border-zinc-800'}`}
+            startContent={isLive ? <Radio size={12} className="animate-pulse" /> : <FastForward size={12} />}
             onPress={onToggleLive}
         >
-            {isLive ? 'LIVE' : 'GO LIVE'}
+            {isLive ? 'LIVE' : 'SYNC'}
         </Button>
     </div>
 
-    {/* Timeline Slider */}
+    {/* Slider y Tiempo */}
     <div className="flex-1 flex flex-col justify-center gap-1">
+        <div className="flex justify-between items-end px-1">
+             <span className="text-[10px] text-zinc-500 font-mono uppercase tracking-wider">MATCH TIME</span>
+             <span className="font-mono text-sm font-bold text-white tabular-nums tracking-widest">{currentTime}</span>
+        </div>
         <Slider 
             size="sm"
             color="primary"
@@ -254,14 +205,11 @@ const PlaybackControls = ({ currentTime, isLive, isPlaying, currentFrame, maxFra
             onChange={(v) => onSeek(Array.isArray(v) ? v[0] : v)}
             aria-label="Timeline"
             classNames={{
-                track: "bg-zinc-800 border border-white/5",
-                thumb: "bg-white shadow-lg w-4 h-4 after:bg-primary"
+                track: "bg-zinc-800 border border-white/5 h-1.5",
+                thumb: "bg-white shadow-lg w-3 h-3 after:bg-primary"
             }}
         />
-        <div className="flex justify-between text-[10px] text-zinc-600 font-mono px-1">
-            <span>START</span>
-            <span>END</span>
-        </div>
+        {/* CAMBIO: Se quitaron los textos START / END */}
     </div>
   </div>
 )
@@ -398,110 +346,97 @@ function App() {
     return () => clearInterval(intervalId);
   }, []);
 
+  // Lista de Jugadores para el Ticker (Derivada del mapa)
+  const tickerPlayers = useMemo(() => {
+    return Object.values(playerMap).map((p, i) => ({
+        id: i,
+        name: p.name,
+        number: p.number,
+        deviation: (Math.random() * 5 - 2).toFixed(1) // Placeholder dinámico
+    }));
+  }, [playerMap]);
+
+
   // --- RENDER FINAL ---
-  return (
-    <div className="relative w-full h-screen overflow-hidden bg-transparent font-sans selection:bg-primary/30 text-foreground">
-      
-      {/* LAYER 0: EL CANVAS (Centrado + Escalado Inteligente) */}
-      <div className="absolute inset-0 z-0 flex items-center justify-center bg-black/20 overflow-hidden">
-         <div className="flex items-center justify-center w-full h-full transition-transform duration-500 ease-out scale-[0.65] md:scale-[0.85] lg:scale-100 xl:scale-105">
-              <div className="relative shadow-2xl border border-white/5 rounded-xl overflow-hidden">
-                  <FootballPitch 
-                    matchState={displayData} 
-                    latestEvent={latestEvent}
-                    playerMap={playerMap} 
-                    width={1280}   
-                    height={720}   
-                  />
-              </div>
-         </div>
-      </div>
-
-      {/* LAYER 1: EL OVERLAY (Interfaz) */}
-      <div className="absolute inset-0 z-10 flex flex-col p-4 pointer-events-none gap-2">
+return (
+    <div className="flex flex-col h-screen w-full bg-black/50 text-foreground overflow-hidden font-sans selection:bg-primary/30">
         
-        {/* TOP BAR */}
-        <header className="flex justify-between items-center pointer-events-auto h-12">
-          {/* Logo & Match Info */}
-          <div className="flex items-center gap-3 pl-2">
-             <img src={tactixLogo} alt="Tactix" className="h-6 w-auto opacity-80" />
+        {/* HEADER */}
+        <header className="h-14 flex items-center justify-between px-4 border-b border-white/5 bg-zinc-950/50 relative z-50">
+          <div className="flex items-center gap-3">
+             <img src={tactixLogo} alt="Tactix" className="h-6 w-auto opacity-90" />
              <div className="h-4 w-[1px] bg-white/10" />
-             <span className="text-[10px] text-zinc-500 font-mono uppercase">PRO LEAGUE</span>
+             <span className="text-[10px] text-zinc-500 font-mono uppercase tracking-widest">PRO LEAGUE <span className="text-primary">LIVE</span></span>
           </div>
-
-          {/* NAV TABS (Actualizado: 'GEMINI AI' sustituye a 'Heatmaps') */}
-          <div className="flex gap-1 bg-black/20 backdrop-blur-md p-1 rounded-full border border-white/5">
-             <button className="px-5 py-1 rounded-full text-[10px] font-bold tracking-wide bg-white/10 text-white shadow-sm flex items-center gap-2">
-                <Activity size={12} /> OVERVIEW
+          <div className="flex gap-2">
+             <button className="px-4 py-1.5 rounded-full text-[10px] font-bold tracking-wide bg-white/5 text-white border border-white/5 hover:bg-white/10 transition-colors flex items-center gap-2">
+                <LayoutGrid size={12} /> DASHBOARD
              </button>
-             <button className="px-5 py-1 rounded-full text-[10px] font-bold tracking-wide text-zinc-400 hover:text-white hover:bg-white/5 transition-colors">
-                ANALITYCS
-             </button>
-             <button className="px-5 py-1 rounded-full text-[10px] font-bold tracking-wide text-zinc-400 hover:text-white hover:bg-white/5 transition-colors">
-                PLAYERS
-             </button>
-             <button className="px-5 py-1 rounded-full text-[10px] font-bold tracking-wide text-zinc-400 hover:text-white hover:bg-white/5 transition-colors group">
-                <BrainCircuit size={12} className="group-hover:text-primary" /> GEMINI AI
+             <button className="px-4 py-1.5 rounded-full text-[10px] font-bold tracking-wide text-zinc-400 hover:text-white transition-colors flex items-center gap-2">
+                <BrainCircuit size={12} /> GEMINI VISION
              </button>
           </div>
-
-          {/* Status */}
-          <div className="flex gap-3">
-             {isLoadingHistory && (
-                 <Chip color="warning" variant="dot" className="tactix-glass border-none text-warning">BUFFERING</Chip>
-             )}
-             <div className={`tactix-glass px-4 py-2 rounded-xl flex items-center gap-2 border ${status === 'ONLINE' ? 'border-success/20' : 'border-danger/20'}`}>
-                {status === 'ONLINE' ? <Wifi size={16} className="text-success" /> : <WifiOff size={16} className="text-danger" />}
-                <span className={`font-mono text-xs font-bold ${status === 'ONLINE' ? 'text-success' : 'text-danger'}`}>{status}</span>
+          <div className="flex items-center gap-3">
+             {isLoadingHistory && <Chip color="warning" variant="dot" size="sm" className="bg-transparent border-none text-warning">BUFFERING</Chip>}
+             <div className={`flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 border ${status === 'ONLINE' ? 'border-success/20' : 'border-danger/20'}`}>
+                {status === 'ONLINE' ? <Wifi size={12} className="text-success" /> : <WifiOff size={12} className="text-danger" />}
+                <span className={`font-mono text-[10px] font-bold ${status === 'ONLINE' ? 'text-success' : 'text-danger'}`}>{status}</span>
              </div>
           </div>
         </header>
 
-        {/* SCOREBOARD FLOTANTE (Bajado de la barra) */}
-        {/* Lo colocamos fuera del header, centrado, con mt-2 para separarlo */}
-        <div className="flex justify-center pointer-events-none z-20 -mt-2">
-            <div className="bg-zinc-950/80 backdrop-blur-xl px-6 py-2 rounded-2xl border border-white/10 shadow-2xl flex items-center gap-6 pointer-events-auto transform scale-90">
-                <span className="text-lg font-bold text-zinc-300">HOME</span>
-                <div className="text-3xl font-mono font-bold text-white tracking-widest drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]">
-                  2<span className="text-zinc-600 mx-2 text-2xl">:</span>1
+        {/* GHOST TICKER */}
+        <GhostTicker players={tickerPlayers} />
+
+        {/* MAIN LAYOUT */}
+        <main className="flex-1 min-h-0 grid grid-cols-12 gap-0 relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-900/10 via-zinc-950/30 to-zinc-950/50">
+            {/* IZQUIERDA: FEED */}
+            <aside className="col-span-3 lg:col-span-2 min-h-0 flex flex-col z-20 shadow-[5px_0_30px_rgba(0,0,0,0.3)]">
+                <EventFeed events={eventsList} />
+            </aside>
+
+            {/* DERECHA: CAMPO + CONTROLES */}
+            <section className="col-span-9 lg:col-span-10 relative flex flex-col p-4 overflow-hidden">
+                
+                {/* Scoreboard */}
+                <div className="absolute top-4 left-0 right-0 z-30 flex justify-center w-full pointer-events-none">
+                    <div className="bg-black/40 backdrop-blur-md px-8 py-2 rounded-2xl border border-white/5 shadow-2xl flex items-center gap-8">
+                        <span className="text-sm font-bold text-zinc-400 tracking-wider">LIV</span>
+                        <div className="text-3xl font-mono font-bold text-white tracking-widest drop-shadow-lg">
+                        2<span className="text-zinc-600 mx-3 text-2xl">:</span>1
+                        </div>
+                        <span className="text-sm font-bold text-zinc-400 tracking-wider">MCI</span>
+                    </div>
                 </div>
-                <span className="text-lg font-bold text-zinc-300">AWAY</span>
-            </div>
-        </div>
 
-        {/* MAIN GRID (Cuerpo) */}
-        <main className="flex-1 grid grid-cols-12 gap-4 min-h-0 pt-2">
-          
-          {/* IZQUIERDA: Event Feed (Transparente y estrecho) */}
-          <aside className="col-span-2 flex flex-col min-h-0">
-             <EventFeed events={eventsList} />
-          </aside>
+                {/* Área del Campo */}
+                <div className="flex-1 flex items-center justify-center relative min-h-0">
+                     <div className="scale-[0.8] lg:scale-[0.9] xl:scale-100 transition-transform duration-500">
+                        <FootballPitch 
+                            matchState={displayData} 
+                            latestEvent={latestEvent}
+                            playerMap={playerMap} 
+                            width={1150}   
+                            height={720}   
+                        />
+                     </div>
+                </div>
 
-          {/* CENTRO: Vacío para el campo */}
-          <div className="col-span-8 pointer-events-none"></div>
-
-          {/* DERECHA: Ghost Mate (A la derecha, transparente) */}
-          <aside className="col-span-2 flex flex-col min-h-0">
-             <GhostMateTicker />
-          </aside>
-
+                {/* FOOTER CONTROLS (Ahora vive dentro de esta columna) */}
+                <div className="w-full relative z-20 pb-2">
+                    <PlaybackControls 
+                        currentTime={formatTime(displayData?.timestamp)} 
+                        isLive={isLive}
+                        isPlaying={isPlaying} 
+                        currentFrame={sliderValue} 
+                        maxFrame={maxFrame} 
+                        onSeek={handleSeek}
+                        onToggleLive={handleGoLive}
+                        onTogglePlay={handleTogglePlay}
+                    />
+                </div>
+            </section>
         </main>
-
-        {/* FOOTER CONTROLS */}
-        <footer className="flex justify-center items-end pb-2 pointer-events-none">
-          <PlaybackControls 
-                currentTime={formatTime(displayData?.timestamp)} 
-                isLive={isLive}
-                isPlaying={isPlaying} 
-                currentFrame={sliderValue} 
-                maxFrame={maxFrame} 
-                onSeek={handleSeek}
-                onToggleLive={handleGoLive}
-                onTogglePlay={handleTogglePlay}
-          />
-        </footer>
-
-      </div>
     </div>
   )
 }
