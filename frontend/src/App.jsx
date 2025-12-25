@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import FootballPitch from './components/FootballPitch';
 import GhostTicker from './components/GhostTicker';
+import DynamicBackground from './components/DynamicBackground';
+import TactixLogo from './components/TactixLogo';
 import { useMatchHistory } from './hooks/useMatchHistory';
 import tactixLogo from './assets/tactix-live.png';
 
@@ -359,14 +361,18 @@ function App() {
 
   // --- RENDER FINAL ---
 return (
-    <div className="flex flex-col h-screen w-full bg-black/50 text-foreground overflow-hidden font-sans selection:bg-primary/30">
-        
+    <div className="flex flex-col h-screen w-full relative overflow-hidden font-sans selection:bg-primary/30 text-foreground">
+      <DynamicBackground />
         {/* HEADER */}
         <header className="h-14 flex items-center justify-between px-4 border-b border-white/5 bg-zinc-950/50 relative z-50">
           <div className="flex items-center gap-3">
-             <img src={tactixLogo} alt="Tactix" className="h-6 w-auto opacity-90" />
-             <div className="h-4 w-[1px] bg-white/10" />
-             <span className="text-[10px] text-zinc-500 font-mono uppercase tracking-widest">PRO LEAGUE <span className="text-primary">LIVE</span></span>
+            {/* Logo SVG Animado y Vectorial */}
+            <TactixLogo size={32} /> 
+            <div className="h-4 w-[1px] bg-white/10" />
+            {/* Texto de Marca (Tipografía limpia) */}
+            <span className="text-lg font-bold tracking-tight text-white">
+              TACTIX <span className="text-primary font-mono text-xs align-top">LIVE</span>
+            </span>
           </div>
           <div className="flex gap-2">
              <button className="px-4 py-1.5 rounded-full text-[10px] font-bold tracking-wide bg-white/5 text-white border border-white/5 hover:bg-white/10 transition-colors flex items-center gap-2">
