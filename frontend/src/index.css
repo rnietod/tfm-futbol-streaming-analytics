@@ -2,25 +2,45 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  background-color: #050a10; 
-  color: #e2e8f0;
-  margin: 0;
-  padding: 0;
+/* * TACTIX GLOBAL STYLES */
 
-  /* TRUCO PRO: Capa de oscurecimiento + Imagen de fondo */
-  background-image: 
-    linear-gradient(rgba(5, 10, 20, 0.2), rgba(5, 10, 20, 0.2)),
-    url('/cyber-bg.png'); /* Tu imagen */
+body {
+  @apply min-h-screen bg-background text-foreground antialiased selection:bg-primary/30 selection:text-primary-foreground;
   
+  /* CAMBIO: Reducimos drásticamente la opacidad del gradiente (de 0.95 a 0.4) 
+     para que se vea la imagen cyber-bg.png */
+  background-image: 
+    linear-gradient(to bottom, rgba(9, 9, 11, 0.7), rgba(9, 9, 11, 0.8)),
+    url('/cyber-bg.png');
+    
   background-size: cover;
   background-position: center;
   background-attachment: fixed;
-  background-blend-mode: normal; 
+  background-repeat: no-repeat;
 }
 
-/* Scrollbar (Sin cambios) */
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #0b1116; }
-::-webkit-scrollbar-thumb { background: #151f2b; border: 1px solid #334155; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #00f2ff; }
+@layer utilities {
+  .tactix-glass {
+    @apply bg-zinc-950/60 backdrop-blur-xl border border-white/10 shadow-2xl;
+  }
+  
+  .tactix-card {
+    @apply bg-zinc-900/50 hover:bg-zinc-800/50 transition-colors border border-white/5 rounded-lg;
+  }
+
+  .text-muted {
+    @apply text-zinc-400;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none; 
+    scrollbar-width: none; 
+  }
+
+  .tactix-clean {
+    @apply bg-transparent border-none shadow-none;
+  }
+}

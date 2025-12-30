@@ -157,6 +157,7 @@ class SimulationEngine:
 
                 # Lista exacta de columnas solicitadas
                 target_columns = [
+                    "id", "index",
                     "timestamp", "period", "minute", "event_type_name", "event_type_id",
                     "team_name", "player_name", "location_x", "location_y",
                     "end_location_y", "end_location_x", "end_location_z",
@@ -185,6 +186,13 @@ class SimulationEngine:
                 # 4. Seleccionar SOLO las columnas de interés + game_time
                 final_cols = target_columns + ['game_time']
                 e_df = e_df[final_cols]
+
+                integers_to_fix = ['event_type_id', 'type_id', 'outcome_id']
+
+                for col in integers_to_fix:
+                    if col in e_df.columns:
+                        # astype('Int64') es la clave mágica de Pandas moderno
+                        e_df[col] = e_df[col].astype('Int64')
 
                 # 5. Ordenar para el streaming
                 e_df = e_df.sort_values(by=['period', 'game_time'])
