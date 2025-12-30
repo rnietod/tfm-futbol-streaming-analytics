@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* * TACTIX GLOBAL STYLES */
+
+body {
+  @apply min-h-screen bg-background text-foreground antialiased selection:bg-primary/30 selection:text-primary-foreground;
+  
+  /* CAMBIO: Reducimos drásticamente la opacidad del gradiente (de 0.95 a 0.4) 
+     para que se vea la imagen cyber-bg.png */
+  background-image: 
+    linear-gradient(to bottom, rgba(9, 9, 11, 0.7), rgba(9, 9, 11, 0.8)),
+    url('/cyber-bg.png');
+    
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+@layer utilities {
+  .tactix-glass {
+    @apply bg-zinc-950/60 backdrop-blur-xl border border-white/10 shadow-2xl;
+  }
+  
+  .tactix-card {
+    @apply bg-zinc-900/50 hover:bg-zinc-800/50 transition-colors border border-white/5 rounded-lg;
+  }
+
+  .text-muted {
+    @apply text-zinc-400;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none; 
+    scrollbar-width: none; 
+  }
+
+  .tactix-clean {
+    @apply bg-transparent border-none shadow-none;
+  }
+}
