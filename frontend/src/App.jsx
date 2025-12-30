@@ -7,9 +7,9 @@ import {
 import FootballPitch from './components/FootballPitch';
 import GhostTicker from './components/GhostTicker';
 import DynamicBackground from './components/DynamicBackground';
+import PlayerGlassCard from './components/PlayerGlassCard';
 import TactixLogo from './components/TactixLogo';
 import { useMatchHistory } from './hooks/useMatchHistory';
-import tactixLogo from './assets/tactix-live.png';
 
 // --- UTILIDADES ---
 const formatTime = (fullTimestamp) => {
@@ -229,6 +229,11 @@ function App() {
   const [playerMap, setPlayerMap] = useState({});
   const ws = useRef(null);
   const lastEventIndex = useRef(-1);
+  const [selectedPlayer, setSelectedPlayer] = useState(null);
+
+  const handleSelectPlayer = (playerData) => {
+      setSelectedPlayer(playerData);
+  };
 
   // Hook de Historial
   const { 
@@ -392,7 +397,10 @@ return (
         </header>
 
         {/* GHOST TICKER */}
-        <GhostTicker players={tickerPlayers} />
+        <GhostTicker 
+            players={tickerPlayers} 
+            onPlayerClick={handleSelectPlayer} 
+        />
 
         {/* MAIN LAYOUT */}
         <main className="flex-1 min-h-0 grid grid-cols-12 gap-0 relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-900/10 via-zinc-950/30 to-zinc-950/50">
@@ -423,7 +431,8 @@ return (
                             latestEvent={latestEvent}
                             playerMap={playerMap} 
                             width={1150}   
-                            height={720}   
+                            height={720}
+                            onPlayerClick={handleSelectPlayer}
                         />
                      </div>
                 </div>
@@ -443,6 +452,22 @@ return (
                 </div>
             </section>
         </main>
+
+        {/* LAYER 2: MODAL OVERLAY (Player Card) */}
+        {selectedPlayer && (
+            <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                {/* Click en el fondo para cerrar */}
+                <div className="absolute inset-0" onClick={() => setSelectedPlayer(null)} />
+                
+                {/* La Tarjeta Centrada */}
+                <div className="z-10 animate-in zoom-in-95 duration-300 relative">
+                    <PlayerGlassCard 
+                        player={selectedPlayer} 
+                        onClose={() => setSelectedPlayer(null)} 
+                    />
+                </div>
+            </div>
+        )}
     </div>
   )
 }
