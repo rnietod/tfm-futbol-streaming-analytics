@@ -1,13 +1,13 @@
 import React from 'react';
 
-const PlayerMarker = ({ number, team, x, y, isGK }) => {
+const PlayerMarker = ({ number, team, x, y, isGK, onClick }) => {
   // Configuración de Colores Tácticos (Cyberpunk Neon)
   // Home: Rojo Neón | Away: Cyan Neón | GK: Amarillo
   const baseColor = isGK ? '#fbbf24' : (team === 'home' ? '#ff2a6d' : '#00f2ff');
   
   return (
     <div
-      className="absolute flex flex-col items-center justify-center will-change-transform z-10"
+      className="absolute flex flex-col items-center justify-center will-change-transform z-10 cursor-pointer"
       style={{
         left: x,
         top: y,
@@ -15,6 +15,7 @@ const PlayerMarker = ({ number, team, x, y, isGK }) => {
         // INTERPOLACIÓN CLAVE: 100ms linear coincide con tu tasa de datos (10Hz)
         transition: 'all 0.1s linear' 
       }}
+      onClick={onClick}
     >
       {/* Círculo Exterior (Halo) */}
       <div 
@@ -33,7 +34,7 @@ const PlayerMarker = ({ number, team, x, y, isGK }) => {
         </span>
       </div>
 
-      {/* Triángulo de dirección (Opcional, decorativo por ahora) */}
+      {/* Triángulo de dirección  */}
       <div 
         className="w-0 h-0 border-l-[3px] border-r-[3px] border-b-[4px] border-l-transparent border-r-transparent mt-0.5"
         style={{ borderBottomColor: baseColor }}

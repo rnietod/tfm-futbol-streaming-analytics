@@ -5,7 +5,7 @@ import PlayerMarker from './PlayerMarker';
 const REAL_PITCH_LENGTH = 105;
 const REAL_PITCH_WIDTH = 68;
 
-const FootballPitch = ({ matchState, latestEvent, playerMap = {}, width = 1100, height = 700 }) => {
+const FootballPitch = ({ matchState, latestEvent, playerMap = {}, width = 1100, height = 700, onPlayerClick }) => {
   
   // (Funciones de conversión matemática IGUAL QUE ANTES...)
   const trackingToPixels = (x_meters, y_meters) => {
@@ -100,9 +100,6 @@ const FootballPitch = ({ matchState, latestEvent, playerMap = {}, width = 1100, 
         const dorsal = meta.number || player.jersey_number || '';
         
         // 3. Usamos el team_id para colorear
-        // Tienes que saber qué ID es Local/Visitante.
-        // Si no lo sabes, mira el dashboard o los IDs. 
-        // Supondré que 275 es Local (Rojo) y 262 Visitante (Azul) basado en tus datos anteriores
         const teamSide = (meta.team_id === 275 || player.team_id === 275) ? 'home' : 'away';
         
         // 4. Portero?
@@ -116,6 +113,7 @@ const FootballPitch = ({ matchState, latestEvent, playerMap = {}, width = 1100, 
             x={x}
             y={y}
             isGK={isGK}
+            onClick={() => onPlayerClick(player)}
           />
         );
       })}

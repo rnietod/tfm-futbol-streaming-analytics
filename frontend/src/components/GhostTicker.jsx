@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { TrendingUp, TrendingDown, Minus, Users, Shield } from 'lucide-react';
 
-const GhostTicker = ({ players = [] }) => {
+const GhostTicker = ({ players, onPlayerClick }) => {
   const [filter, setFilter] = useState('all'); // 'all', 'home', 'away'
   const [isPaused, setIsPaused] = useState(false);
 
@@ -65,7 +65,7 @@ const GhostTicker = ({ players = [] }) => {
             </button>
         </div>
       </div>
-
+      
       {/* MARQUEE ANIMADO (CSS PURO) */}
       <div 
         className="flex w-full items-center pl-60 mask-linear-fade"
@@ -88,7 +88,11 @@ const GhostTicker = ({ players = [] }) => {
              const isPositive = deviation > 0;
 
              return (
-              <div key={`${player.id}-${idx}`} className="flex items-center gap-3 group cursor-pointer select-none hover:opacity-100 opacity-80 transition-opacity">
+              <div 
+                key={`${player.id}-${idx}`} 
+                onClick={() => onPlayerClick && onPlayerClick(player)}
+                className="flex items-center gap-3 group cursor-pointer select-none hover:opacity-100 opacity-80 transition-opacity"
+              >
                 <div className="flex flex-col items-end leading-none">
                     <span className="text-[9px] font-mono text-zinc-600">#{player.number || '00'}</span>
                     <span className="text-xs font-bold text-zinc-400 group-hover:text-white transition-colors">
