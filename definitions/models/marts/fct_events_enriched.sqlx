@@ -23,18 +23,23 @@ with
   , event_types as (
     select * from ${ref("stg_ref_event_types")}
   )
+
+  -- 3. Diccionario de Equipos
+  , teams as (
+    select * from ${ref("stg_event_teams")}
+  )
   
-  -- 3. Qualifiers (Fuente Vertical)
+  -- 4. Qualifiers (Fuente Vertical)
   , qualifiers as (
     select * from ${ref("stg_event_qualifiers")}
   )
 
-  -- 4. Game State
+  -- 5. Game State
   , game_state as (
     select * from ${ref("int_game_state")}
   )
 
-  -- 5. CTE DE PIVOTE
+  -- 6. CTE DE PIVOTE
   , pivoted_qualifiers as (
     select
       match_id
@@ -155,16 +160,18 @@ with
       , event_key
   )
 
-  -- 6. UNIÓN FINAL
+  -- 7. UNIÓN FINAL
   , joined as (
     select
       events.*
       , event_types.event_type_name
+      , teams.team_name
       , game_state.game_state_label
       , pivoted_qualifiers.* except(match_id, event_id, event_key)
     from
       events
       left join event_types on events.type_id = event_types.event_type_id
+      left join teams on events.match_id = teams.match_id and events.team_id = teams.team_id
       left join pivoted_qualifiers on events.event_key = pivoted_qualifiers.event_key and events.match_id = pivoted_qualifiers.match_id
       left join game_state on events.event_key = game_state.event_key
   )

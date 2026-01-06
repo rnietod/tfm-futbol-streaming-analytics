@@ -1,6 +1,7 @@
 {
   "name": "tactix-data-modeling",
   "dependencies": {
-    "@dataform/core": "^3.0.0"
+    "@dataform/core": "^3.0.0",
+    "recharts": "^3.6.0"
   }
 }
