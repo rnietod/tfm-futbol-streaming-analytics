@@ -1,0 +1,37 @@
+config {
+  type: "view",
+  schema: "ml_football",
+  description: "Dataset de entrenamiento para el modelo xG. Filtra disparos y aplica sampling del 1% para pruebas low-cost.",
+  tags: ["ml", "xg"]
+}
+
+SELECT
+    event_key,
+    IF(type_id = 16, 1, 0) AS is_goal,
+    ROUND(SQRT(POW(100 - location_x, 2) + POW(50 - location_y, 2)), 2) AS distance_to_goal,
+    ROUND(
+      ACOS(
+        SAFE_DIVIDE(
+          ((100 - location_x) * (100 - location_x) + (46 - location_y) * (54 - location_y)),
+          (SQRT(POW(100 - location_x, 2) + POW(46 - location_y, 2)) * SQRT(POW(100 - location_x, 2) + POW(54 - location_y, 2)))
+        )
+      ) * 180 / ACOS(-1)
+    , 2) AS angle_visible,
+    CASE 
+        WHEN body_head THEN 'Head'
+        WHEN body_right_foot OR body_left_foot THEN 'Foot'
+        ELSE 'Other'
+    END AS body_part,
+    CASE 
+        WHEN is_penalty THEN 'Penalty'
+        WHEN is_from_corner THEN 'From Corner'
+        WHEN is_free_kick THEN 'Direct Free Kick'
+        WHEN is_fast_break THEN 'Fast Break'
+        WHEN is_set_piece THEN 'Set Piece'
+        ELSE 'Regular Play'
+    END AS play_pattern
+
+FROM ${ref("fct_events_enriched")}
+WHERE 
+    type_id IN (13, 14, 15, 16)
+    AND is_own_goal IS FALSE

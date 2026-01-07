@@ -1,0 +1,23 @@
+config {
+  type: "operations",
+  schema: "ml_football",
+  tags: ["ml", "xg"],
+  hasOutput: true
+}
+
+CREATE OR REPLACE MODEL ${self()}
+OPTIONS(
+  model_type = 'LOGISTIC_REG',
+  input_label_cols = ['is_goal'],
+  max_iterations = 50,
+  early_stop = TRUE,
+  min_rel_progress = 0.001,
+  enable_global_explain = TRUE
+) AS
+SELECT
+    is_goal,
+    distance_to_goal,
+    angle_visible,
+    body_part,
+    play_pattern
+FROM ${ref("int_xg_training_dataset")}

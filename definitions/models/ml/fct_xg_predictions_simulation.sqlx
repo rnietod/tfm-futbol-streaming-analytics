@@ -1,0 +1,33 @@
+config {
+  type: "view",
+  schema: "ml_football",
+  description: "Vista de simulación de predicciones xG sobre datos no vistos.",
+  tags: ["ml", "xg"]
+}
+
+SELECT
+    probs.label AS prediction,
+    ROUND(probs.prob, 3) AS xg_probability,
+    IF(original.event_type_name = 'Goal', 1, 0) AS actual_result,
+    prediction_results.distance_to_goal,
+    prediction_results.angle_visible,
+    prediction_results.play_pattern,
+    prediction_results.event_key
+FROM
+    ML.PREDICT(MODEL ${ref("model_xg")}, (
+        -- Generamos features al vuelo para validación
+        SELECT 
+            event_key,
+            IF(type_id = 16, 1, 0) as is_goal,
+            ROUND(SQRT(POW(100 - location_x, 2) + POW(50 - location_y, 2)), 2) AS distance_to_goal,
+            ROUND(ACOS(SAFE_DIVIDE(((100 - location_x) * (100 - location_x) + (46 - location_y) * (54 - location_y)), (SQRT(POW(100 - location_x, 2) + POW(46 - location_y, 2)) * SQRT(POW(100 - location_x, 2) + POW(54 - location_y, 2))))) * 180 / ACOS(-1), 2) AS angle_visible,
+            CASE WHEN body_head THEN 'Head' WHEN body_right_foot OR body_left_foot THEN 'Foot' ELSE 'Other' END AS body_part,
+            CASE WHEN is_penalty THEN 'Penalty' WHEN is_from_corner THEN 'From Corner' WHEN is_fast_break THEN 'Fast Break' ELSE 'Regular Play' END AS play_pattern
+        FROM ${ref("fct_events_enriched")}
+        WHERE type_id IN (13, 14, 15, 16) AND is_own_goal IS FALSE
+        -- Tomamos una muestra diferente o aleatoria para simular inferencia
+        LIMIT 100
+    )) as prediction_results,
+    UNNEST(predicted_is_goal_probs) as probs
+    JOIN ${ref("fct_events_enriched")} as original ON original.event_key = prediction_results.event_key
+WHERE probs.label = 1
