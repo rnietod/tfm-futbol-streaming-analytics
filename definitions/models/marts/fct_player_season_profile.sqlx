@@ -1,0 +1,142 @@
+config {
+  type: "table",
+  schema: "marts_football",
+  description: "Perfil detallado de rendimiento por Temporada/Equipo/Estado. Incluye xG predictivo, métricas de pase avanzadas y desglose defensivo.",
+  tags: ["marts", "profile"],
+  bigquery: {
+    clusterBy: ["player_id", "season", "team_id"]
+  }
+}
+
+WITH 
+  -- 1. MOTOR xG: Inferencia masiva sobre todos los disparos
+  shots_with_xg AS (
+    SELECT
+      event_key,
+      prob.prob as predicted_xg
+    FROM ML.PREDICT(MODEL ${ref("model_xg")}, (
+      SELECT 
+        event_key,
+        IF(type_id = 16, 1, 0) as is_goal,
+        -- Features geométricas idénticas al entrenamiento
+        ROUND(SQRT(POW(100 - location_x, 2) + POW(50 - location_y, 2)), 2) AS distance_to_goal,
+        ROUND(ACOS(SAFE_DIVIDE(((100 - location_x) * (100 - location_x) + (46 - location_y) * (54 - location_y)), (SQRT(POW(100 - location_x, 2) + POW(46 - location_y, 2)) * SQRT(POW(100 - location_x, 2) + POW(54 - location_y, 2))))) * 180 / ACOS(-1), 2) AS angle_visible,
+        CASE WHEN body_head THEN 'Head' WHEN body_right_foot OR body_left_foot THEN 'Foot' ELSE 'Other' END AS body_part,
+        CASE WHEN is_penalty THEN 'Penalty' WHEN is_from_corner THEN 'From Corner' WHEN is_fast_break THEN 'Fast Break' ELSE 'Regular Play' END AS play_pattern
+      FROM ${ref("fct_events_enriched")}
+      WHERE type_id IN (13, 14, 15, 16)
+    )), UNNEST(predicted_is_goal_probs) prob
+    WHERE prob.label = 1
+  ),
+
+  -- 2. ENRIQUECIMIENTO DE PASES (Ángulos y Distancias)
+  pass_details AS (
+    SELECT 
+      event_key,
+      (pass_end_x - location_x) > 10 AND ABS(pass_end_y - location_y) < (pass_end_x - location_x) as is_vertical,
+      -- Distancia
+      length,
+      CASE 
+        WHEN length < 15 THEN 'Short'
+        WHEN length >= 15 AND length < 30 THEN 'Medium'
+        WHEN length >= 30 THEN 'Long'
+      END as pass_range
+    FROM ${ref("fct_events_enriched")}
+    WHERE type_id = 1
+  ),
+
+  -- 3. MINUTOS (Denominador)
+  player_minutes AS (
+    SELECT 
+      player_id, 
+      season,
+      team_id,
+      game_state_label as game_state,
+      SUM(minutes_in_state_approx) as minutes_played
+    FROM ${ref("int_player_match_stats")}
+    GROUP BY 1, 2, 3, 4
+  ),
+
+  -- 4. AGREGACIÓN CORE
+  agg_stats AS (
+    SELECT
+      e.player_id,
+      e.player_name,
+      e.season,
+      e.team_id,
+      COALESCE(e.game_state_label, 'Drawing') as game_state,
+      
+      -- CONTEXTO
+      COUNT(DISTINCT e.match_id) as matches_played,
+      MAX(e.event_timestamp) as last_match_date,
+
+      -- === TIROS & GOLES ===
+      SUM(CASE WHEN e.type_id = 16 THEN 1 ELSE 0 END) as goals,
+      SUM(CASE WHEN e.type_id IN (13, 14, 15, 16) THEN 1 ELSE 0 END) as shots_total,
+      -- On Target: Goles (16) + Paradas (15)
+      SUM(CASE WHEN e.type_id IN (15, 16) THEN 1 ELSE 0 END) as shots_on_target,
+      SUM(CASE WHEN e.is_blocked_shot THEN 1 ELSE 0 END) as shots_blocked,
+      -- xG Predictivo
+      SUM(COALESCE(x.predicted_xg, 0)) as total_xg,
+      -- Desglose Distancia
+      SUM(CASE WHEN e.type_id IN (13, 14, 15, 16) AND e.is_box_centre THEN 1 ELSE 0 END) as shots_inside_box,
+      SUM(CASE WHEN e.type_id IN (13, 14, 15, 16) AND e.is_out_of_box_centre THEN 1 ELSE 0 END) as shots_outside_box,
+      
+      -- === PASES ===
+      SUM(CASE WHEN e.type_id = 1 THEN 1 ELSE 0 END) as passes_total,
+      SUM(CASE WHEN e.type_id = 1 AND e.outcome = 1 THEN 1 ELSE 0 END) as passes_completed,
+      -- Verticalidad (Join con CTE pass_details)
+      SUM(CASE WHEN pd.is_vertical THEN 1 ELSE 0 END) as passes_vertical,
+      SUM(CASE WHEN NOT pd.is_vertical THEN 1 ELSE 0 END) as passes_horizontal,
+      -- Rangos
+      SUM(CASE WHEN pd.pass_range = 'Short' THEN 1 ELSE 0 END) as passes_short,
+      SUM(CASE WHEN pd.pass_range = 'Long' THEN 1 ELSE 0 END) as passes_long,
+      -- Creación
+      SUM(CASE WHEN e.is_key_pass THEN 1 ELSE 0 END) as key_passes,
+      SUM(CASE WHEN e.is_assist THEN 1 ELSE 0 END) as assists,
+      SUM(CASE WHEN e.is_cross THEN 1 ELSE 0 END) as crosses,
+
+      -- === POSESIÓN & REGATE ===
+      SUM(CASE WHEN e.type_id = 3 THEN 1 ELSE 0 END) as dribbles_attempted,
+      SUM(CASE WHEN e.type_id = 3 AND e.outcome = 1 THEN 1 ELSE 0 END) as dribbles_completed,
+      SUM(CASE WHEN e.type_id = 50 THEN 1 ELSE 0 END) as dispossessed,
+
+      -- === DEFENSA ===
+      SUM(CASE WHEN e.type_id = 8 THEN 1 ELSE 0 END) as interceptions,
+      SUM(CASE WHEN e.type_id = 7 THEN 1 ELSE 0 END) as tackles,
+      SUM(CASE WHEN e.type_id = 49 THEN 1 ELSE 0 END) as recoveries,
+      SUM(CASE WHEN e.type_id = 4 THEN 1 ELSE 0 END) as fouls_committed
+
+    FROM ${ref("fct_events_enriched")} e
+    LEFT JOIN shots_with_xg x USING(event_key)
+    LEFT JOIN pass_details pd USING(event_key)
+    WHERE e.player_position_desc NOT LIKE '%Goalkeeper%'
+    GROUP BY 1, 2, 3, 4, 5
+  )
+
+-- 5. CÁLCULO FINAL P30
+SELECT
+  a.*,
+  pm.minutes_played,
+  
+  -- Ratios de Efectividad
+  SAFE_DIVIDE(a.shots_on_target, a.shots_total) as shot_accuracy_pct,
+  SAFE_DIVIDE(a.passes_completed, a.passes_total) as pass_accuracy_pct,
+  SAFE_DIVIDE(a.dribbles_completed, a.dribbles_attempted) as dribble_success_pct,
+  
+  -- Métricas Normalizadas p30
+  (a.goals / NULLIF(pm.minutes_played, 0)) * 30 as goals_p30,
+  (a.total_xg / NULLIF(pm.minutes_played, 0)) * 30 as xg_p30,
+  (a.shots_total / NULLIF(pm.minutes_played, 0)) * 30 as shots_p30,
+  (a.passes_vertical / NULLIF(pm.minutes_played, 0)) * 30 as passes_vertical_p30,
+  (a.key_passes / NULLIF(pm.minutes_played, 0)) * 30 as key_passes_p30,
+  (a.interceptions / NULLIF(pm.minutes_played, 0)) * 30 as interceptions_p30,
+  (a.recoveries / NULLIF(pm.minutes_played, 0)) * 30 as recoveries_p30
+
+FROM agg_stats a
+LEFT JOIN player_minutes pm 
+  ON a.player_id = pm.player_id 
+  AND a.season = pm.season 
+  AND a.team_id = pm.team_id 
+  AND a.game_state = pm.game_state
+WHERE pm.minutes_played > 0
