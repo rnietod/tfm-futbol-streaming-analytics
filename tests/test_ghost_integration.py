@@ -1,19 +1,18 @@
 import sys
 import os
 import logging
-from sqlalchemy import text
 from sqlalchemy.orm import Session
-
-# Ajuste de path para que encuentre los módulos 'src'
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 from src.data.postgres_client import get_db_engine
 from src.data.models import MatchActiveProfile, Base
 from src.services.match_setup import initialize_match_profiles
 
+# Ajuste de path para que encuentre los módulos 'src'
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 # Configuración de Logs
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 def test_full_ghost_flow():
     """
@@ -22,13 +21,13 @@ def test_full_ghost_flow():
     2. Verificación de Datos (SQLAlchemy)
     """
     print("\n🧪 --- INICIANDO TEST DE INTEGRACIÓN GHOST ENGINE ---")
-    
+
     # 1. DATOS DE PRUEBA
     TEST_MATCH_ID = "test_ghost_ci_cd"
-    
+
     TEST_LINEUP = [
         # Real Madrid
-        {"player_id": 12253, "name": "Vinícius Jr", "role": "FW"}, 
+        {"player_id": 12253, "name": "Vinícius Jr", "role": "FW"},
         {"player_id": 24583, "name": "Jude Bellingham", "role": "MID"},
         # Atlético
         {"player_id": 946, "name": "Griezmann", "role": "FW"},
@@ -51,20 +50,20 @@ def test_full_ghost_flow():
     # 3. VERIFICAR PERSISTENCIA EN POSTGRES
     print("\n🔍 2. Verificando datos en PostgreSQL (JSONB)...")
     engine = get_db_engine()
-    
+
     with Session(engine) as session:
         profiles = session.query(MatchActiveProfile).filter_by(match_id=TEST_MATCH_ID).all()
         
         if not profiles:
             print("❌ ERROR: No se encontraron perfiles en la base de datos.")
             return
-            
+
         print(f"✅ Se encontraron {len(profiles)} perfiles en DB.")
-        
+
         for p in profiles:
             print(f"   👤 Jugador: {p.player_name} (ID: {p.player_id})")
             print(f"      📦 Payload Size: {len(str(p.full_profile_payload))} chars")
-            
+
             # Verificamos si trajo algo dentro del JSON
             if p.full_profile_payload and len(p.full_profile_payload) > 0:
                 print("      ✅ JSONB contiene datos.")
@@ -74,6 +73,7 @@ def test_full_ghost_flow():
                 print("      ⚠️ JSONB está vacío (¿El jugador no existía en BQ?)")
 
     print("\n🎉 --- TEST DE INTEGRACIÓN COMPLETADO ---")
+
 
 if __name__ == "__main__":
     # Asegúrate de tener las credenciales de Google configuradas en tu entorno
