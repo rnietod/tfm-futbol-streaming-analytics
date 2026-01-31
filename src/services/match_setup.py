@@ -8,8 +8,9 @@ logger = logging.getLogger(__name__)
 
 # Configuración del Dataset en BigQuery (Sácalo de tus configs si prefieres)
 # Basado en tu archivo mart_ghost_profile.sqlx, el esquema es 'marts_football'
-BQ_DATASET = "marts_football" 
+BQ_DATASET = "marts_football"
 BQ_TABLE = "mart_ghost_profile"
+
 
 def _fetch_full_profiles_from_bigquery(player_ids: list):
 
@@ -20,9 +21,9 @@ def _fetch_full_profiles_from_bigquery(player_ids: list):
         # 1. Instanciar Cliente
         client = bigquery.Client()
 
-        # 2. Construir Query 
-        ids_str = ",".join(f"'{pid}'" for pid in player_ids) 
-        
+        # 2. Construir Query
+        ids_str = ",".join(f"'{pid}'" for pid in player_ids)
+
         query = f"""
             SELECT * FROM `{client.project}.{BQ_DATASET}.{BQ_TABLE}`
             WHERE player_id IN ({ids_str})
@@ -30,16 +31,14 @@ def _fetch_full_profiles_from_bigquery(player_ids: list):
 
         logger.info(f"🔭 Ejecutando Query en BigQuery: {query}")
         query_job = client.query(query)
-        
+
         # 3. Convertir resultados a lista de dicts
-        # BigQuery devuelve objetos Row, los convertimos a dict para que 
-        # SQLAlchemy pueda guardarlos en la columna JSONB.
         results = []
         for row in query_job:
             # dict(row) convierte la fila completa con todas sus columnas
             row_dict = dict(row)
             results.append(row_dict)
-            
+
         return results
 
     except Exception as e:
@@ -48,13 +47,14 @@ def _fetch_full_profiles_from_bigquery(player_ids: list):
         # Aquí lanzamos el error para que te enteres si la credencial falla.
         raise e
 
+
 def initialize_match_profiles(match_id: str, lineup_list: list):
     """
     THE BIG INGESTION: Carga Masiva (Real).
     """
     engine = get_db_engine()
-    Base.metadata.create_all(engine) 
-    
+    Base.metadata.create_all(engine)
+
     player_ids = [p['player_id'] for p in lineup_list]
     logger.info(f"🚚 Iniciando Ingestión Real desde BigQuery para {match_id} ({len(player_ids)} jugadores)...")
 
@@ -73,10 +73,10 @@ def initialize_match_profiles(match_id: str, lineup_list: list):
     for player in lineup_list:
         pid = player['player_id']
         role = player.get('role', 'MID')
-        
+
         # Recuperamos la fila completa.
         full_payload = bq_map.get(pid)
-        
+
         if not full_payload:
             logger.warning(f"⚠️ Jugador {pid} ({player.get('name')}) no tiene perfil en BigQuery. Usando vacío.")
             full_payload = {}
@@ -105,7 +105,7 @@ def initialize_match_profiles(match_id: str, lineup_list: list):
         try:
             # Limpiamos datos previos de este partido para evitar duplicados
             session.query(MatchActiveProfile).filter(MatchActiveProfile.match_id == match_id).delete()
-            
+
             session.add_all(profiles_to_insert)
             session.commit()
             logger.info(f"✅ CARGA COMPLETA: {len(profiles_to_insert)} perfiles reales de BigQuery persistidos en Postgres.")
