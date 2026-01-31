@@ -1,5 +1,5 @@
 # src/data/models.py
-from sqlalchemy import Column, String, Integer, Float, JSON, DateTime, ForeignKey
+from sqlalchemy import Column, String, Integer, Float, JSON, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
 

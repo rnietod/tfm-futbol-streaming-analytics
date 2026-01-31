@@ -6,9 +6,6 @@ import json
 import math
 from src.data.postgres_client import get_db_engine
 from sqlalchemy import text
-from pydantic import BaseModel
-from typing import List, Dict, Optional
-import random
 from src.services.ghost_engine import GhostEngine
 from src.data.models import MatchActiveProfile, MatchLiveStats
 
@@ -35,38 +32,44 @@ def _get_live_aggregated_stats(match_id: str):
     Retorno: { 946: { 'shots': 2, 'xg': 0.15 ... }, ... }
     """
     engine = get_db_engine()
-    stats_map = {} # <-- Cambio clave: Usamos un Dict, no una Lista
-    
+    stats_map = {}  # <-- Cambio clave: Usamos un Dict, no una Lista
+
     try:
         with engine.connect() as conn:
             query = text("""
-                SELECT 
+                SELECT
                     e.player_id,
                     p.name,
                     p.position as role,
                     MAX(e.minute) as minutes,
                     COUNT(*) FILTER (WHERE e.event_type_name = 'Pass') as passes,
-                    COUNT(*) FILTER (WHERE e.event_type_name IN ('Missed Shy', 'Saved Shot', 'Goal', 'Shot')) as shots,
-                    COUNT(*) FILTER (WHERE e.event_type_name IN ('Ball Recovery', 'Interception', 'Tackle')) as recoveries,
+                    COUNT(*) FILTER (WHERE e.event_type_name IN (
+                         'Missed Shy', 'Saved Shot', 'Goal', 'Shot')
+                         ) as shots,
+                    COUNT(*) FILTER (WHERE e.event_type_name IN (
+                         'Ball Recovery', 'Interception', 'Tackle')
+                         ) as recoveries,
                     COUNT(*) FILTER (WHERE e.event_type_name = 'Goal') as goals,
-                    (COUNT(*) FILTER (WHERE e.event_type_name IN ('Missed Shy', 'Saved Shot', 'Goal', 'Shot')) * 0.12) as xg
+                    (COUNT(*) FILTER (WHERE e.event_type_name IN (
+                         'Missed Shy', 'Saved Shot', 'Goal', 'Shot')
+                         ) * 0.12) as xg
                 FROM match_events e
                 JOIN match_players p ON e.player_id = p.player_id
                 WHERE e.match_id = :mid
                 GROUP BY e.player_id, p.name, p.position
             """)
-            
+
             rows = conn.execute(query, {"mid": match_id}).fetchall()
             for row in rows:
                 data = dict(row._mapping)
                 # Indexamos por ID para búsqueda rápida
                 if data['player_id']:
                     stats_map[data['player_id']] = data
-                
+
     except Exception as e:
         print(f"❌ Error fetching live stats: {e}")
-    
-    return stats_map # Devuelve Dict
+
+    return stats_map  # Devuelve Dict
 
 
 @app.get("/match/{match_id}/ghost-ticker")
@@ -76,23 +79,23 @@ def get_ghost_ticker(match_id: str):
     """
     # 1. Obtenemos mapa de stats actuales
     live_stats_map = _get_live_aggregated_stats(match_id)
-    
+
     # 2. Convertimos el mapa a lista para que el Engine lo procese
     # (El engine espera lista, o podemos adaptarlo, aquí lo adaptamos rápido)
     live_stats_list = list(live_stats_map.values())
-    
+
     # 3. El Engine calcula los scores
     analysis = GhostEngine.analyze_match(match_id, live_stats_list)
-    
+
     # 4. Filtramos solo lo vital para reducir peso de red
     ticker_data = []
     for p in analysis['players']:
         ticker_data.append({
             "pid": p['player_id'],
-            "score": p['overall_score'], # 6.0 - 10.0
-            "status": p['status']        # 'active' | 'calibrating'
+            "score": p['overall_score'],  # 6.0 - 10.0
+            "status": p['status']         # 'active' | 'calibrating'
         })
-        
+
     return {
         "match_minute": analysis['match_minute'],
         "ticker": ticker_data
@@ -106,21 +109,21 @@ def get_full_player_profile(match_id: str, player_id: int):
     """
     engine = get_db_engine()
     response = {}
-    
+
     try:
         with engine.connect() as conn:
             # A. Recuperar la "Expectativa" (JSONB de Postgres)
             # Esto trae los percentiles, contextos y datos ricos de BigQuery
             query_profile = text("""
-                SELECT player_name, position_group, full_profile_payload 
-                FROM match_active_profiles 
+                SELECT player_name, position_group, full_profile_payload
+                FROM match_active_profiles
                 WHERE match_id = :mid AND player_id = :pid
             """)
             profile_row = conn.execute(query_profile, {"mid": match_id, "pid": player_id}).fetchone()
-            
+
             if not profile_row:
                 return {"error": "Player profile not found"}
-                
+
             # B. Recuperar la "Realidad" (Live Stats)
             # Usamos el helper optimizado. Acceso O(1).
             live_stats_map = _get_live_aggregated_stats(match_id)
@@ -133,7 +136,7 @@ def get_full_player_profile(match_id: str, player_id: int):
                     "position": profile_row.position_group,
                     "id": player_id
                 },
-                "ghost_context": profile_row.full_profile_payload, # <--- DATA WAREHOUSE DUMP
+                "ghost_context": profile_row.full_profile_payload,  # <--- DATA WAREHOUSE DUMP
                 "live_performance": {
                     "minutes": player_live.get("minutes", 0),
                     "xg": player_live.get("xg", 0),
@@ -143,7 +146,7 @@ def get_full_player_profile(match_id: str, player_id: int):
                     "goals": player_live.get("goals", 0)
                 }
             }
-            
+
         return clean_nans(response)
 
     except Exception as e:
