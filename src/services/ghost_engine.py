@@ -1,5 +1,4 @@
 import logging
-import math
 from typing import Dict, Any, List
 from sqlalchemy import text
 from src.data.postgres_client import get_db_engine
@@ -25,8 +24,9 @@ ROLE_MAP = {
 # Estructura: { match_id: { player_id: { perfil_historico } } }
 _GHOST_CACHE: Dict[str, Dict[int, Any]] = {}
 
+
 class GhostEngine:
-    
+
     @staticmethod
     def load_ghost_profiles(match_id: str):
         """
@@ -47,7 +47,7 @@ class GhostEngine:
                 # Nota: Asumimos que la tabla mart_ghost_profile existe en Postgres.
                 # Si no existe (entorno dev limpio), fallará y manejaremos la excepción.
                 query = text("""
-                    SELECT 
+                    SELECT
                         mp.player_id,
                         mp.position as role,
                         mg.*
@@ -55,15 +55,15 @@ class GhostEngine:
                     LEFT JOIN mart_ghost_profile mg ON mp.player_id = mg.player_id
                     WHERE mp.match_id = :mid
                 """)
-                
+
                 rows = conn.execute(query, {"mid": match_id}).fetchall()
-                
+
                 for row in rows:
                     # Convertimos la fila a diccionario
                     data = row._mapping
                     if data['player_id']:
                         profiles_cache[data['player_id']] = dict(data)
-                
+
                 _GHOST_CACHE[match_id] = profiles_cache
                 logger.info(f"👻 Ghost Profiles cargados para {match_id}: {len(profiles_cache)} perfiles.")
 
@@ -89,7 +89,7 @@ class GhostEngine:
         raw_deviation = live_val - expected_now
 
         # Excepción: No castigar inactividad en métricas de evento si es 0
-        if live_val == 0 and "xg" in metric_key: # Ejemplo simple
+        if live_val == 0 and "xg" in metric_key:  # Ejemplo simple
              return expected_now, 0.0, "active"
 
         # 2. Cold Start Damper (Amortiguador)
@@ -102,9 +102,9 @@ class GhostEngine:
         elif minutes_played <= 20:
             # Rampa lineal de 0.0 a 1.0 entre el minuto 5 y el 20
             dampener = (minutes_played - 5) / 15.0
-        
+
         final_deviation = raw_deviation * dampener
-        
+
         return expected_now, final_deviation, status
 
     @staticmethod
@@ -115,10 +115,10 @@ class GhostEngine:
         # Asegurar que tenemos caché
         if match_id not in _GHOST_CACHE:
             GhostEngine.load_ghost_profiles(match_id)
-        
+
         ghost_cache = _GHOST_CACHE.get(match_id, {})
         analyzed_players = []
-        
+
         # Minuto actual del partido (el máximo registrado por cualquier jugador activo)
         current_minute = max([p.get('minutes', 0) for p in live_stats]) if live_stats else 0
 
@@ -126,7 +126,7 @@ class GhostEngine:
             pid = p_live['player_id']
             # Recuperar perfil histórico
             p_ghost = ghost_cache.get(pid)
-            
+
             # Si no hay perfil histórico (jugador nuevo), saltamos o usamos defaults
             if not p_ghost:
                 continue
@@ -134,13 +134,13 @@ class GhostEngine:
             role_raw = p_live.get('role', 'MID')
             pos_group = ROLE_MAP.get(role_raw, 'MID')
             weights = WEIGHTS_CONFIG.get(pos_group, WEIGHTS_CONFIG['MID'])
-            
+
             player_result = {
                 "player_id": pid,
                 "player_name": p_live.get('name'),
                 "position_group": pos_group,
                 "metrics": {},
-                "overall_score": 6.0, # Base
+                "overall_score": 6.0,  # Base
                 "status": "active"
             }
 
@@ -153,10 +153,10 @@ class GhostEngine:
                 # Mapeo de nombres: w_xg_p30 (DB Histórico) -> xg (Live Stats)
                 # Quitamos el prefijo 'w_' y el sufijo '_p30' para buscar en live
                 metric_live_key = metric_ghost_key.replace("w_", "").replace("_p30", "")
-                
+
                 # Casos especiales de nombres (si no coinciden exacto)
-                if metric_live_key == "progressive": metric_live_key = "passes" # Simplificación por ahora
-                
+                if metric_live_key == "progressive": metric_live_key = "passes"  # Simplificación por ahora
+
                 live_val = p_live.get(metric_live_key, 0)
                 hist_val = p_ghost.get(metric_ghost_key, 0)
 
@@ -173,7 +173,7 @@ class GhostEngine:
                     "deviation": round(deviation, 3),
                     "importance_weight": weight
                 }
-                
+
                 weighted_sum += deviation * weight
                 total_weight += weight
 
@@ -188,7 +188,7 @@ class GhostEngine:
                 player_result["overall_score"] = max(0.0, min(10.0, round(final_score, 1)))
 
             analyzed_players.append(player_result)
-            
+
         return {
             "match_minute": current_minute,
             "players": analyzed_players

@@ -26,6 +26,7 @@ redis_conn = get_redis_connection()
 # 👻 GHOST ENGINE API (NUEVA ARQUITECTURA)
 # ==========================================
 
+
 def _get_live_aggregated_stats(match_id: str):
     """
     Helper optimizado: Devuelve un DICCIONARIO indexado por player_id.
