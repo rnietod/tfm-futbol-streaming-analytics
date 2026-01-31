@@ -62,7 +62,7 @@ def initialize_match_profiles(match_id: str, lineup_list: list):
     try:
         bq_data = _fetch_full_profiles_from_bigquery(player_ids)
     except Exception as e:
-        logger.error("⚠️ Fallo en BigQuery: {e}. Abortando inicialización de perfiles.")
+        logger.error(f"⚠️ Fallo en BigQuery: {e}. Abortando inicialización de perfiles.")
         return False
 
     # Indexamos por ID para acceso rápido
