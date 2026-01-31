@@ -90,7 +90,7 @@ class GhostEngine:
 
         # Excepción: No castigar inactividad en métricas de evento si es 0
         if live_val == 0 and "xg" in metric_key:  # Ejemplo simple
-             return expected_now, 0.0, "active"
+            return expected_now, 0.0, "active"
 
         # 2. Cold Start Damper (Amortiguador)
         dampener = 1.0
@@ -155,7 +155,8 @@ class GhostEngine:
                 metric_live_key = metric_ghost_key.replace("w_", "").replace("_p30", "")
 
                 # Casos especiales de nombres (si no coinciden exacto)
-                if metric_live_key == "progressive": metric_live_key = "passes"  # Simplificación por ahora
+                if metric_live_key == "progressive":
+                    metric_live_key = "passes"  # Simplificación por ahora
 
                 live_val = p_live.get(metric_live_key, 0)
                 hist_val = p_ghost.get(metric_ghost_key, 0)

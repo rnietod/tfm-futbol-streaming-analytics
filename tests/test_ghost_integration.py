@@ -3,7 +3,7 @@ import os
 import logging
 from sqlalchemy.orm import Session
 from src.data.postgres_client import get_db_engine
-from src.data.models import MatchActiveProfile, Base
+from src.data.models import MatchActiveProfile
 from src.services.match_setup import initialize_match_profiles
 
 # Ajuste de path para que encuentre los módulos 'src'
@@ -53,7 +53,7 @@ def test_full_ghost_flow():
 
     with Session(engine) as session:
         profiles = session.query(MatchActiveProfile).filter_by(match_id=TEST_MATCH_ID).all()
-        
+
         if not profiles:
             print("❌ ERROR: No se encontraron perfiles en la base de datos.")
             return

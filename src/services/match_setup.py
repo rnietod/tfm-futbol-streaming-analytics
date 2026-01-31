@@ -62,7 +62,7 @@ def initialize_match_profiles(match_id: str, lineup_list: list):
     try:
         bq_data = _fetch_full_profiles_from_bigquery(player_ids)
     except Exception as e:
-        logger.error("⚠️ Fallo en BigQuery. Abortando inicialización de perfiles.")
+        logger.error("⚠️ Fallo en BigQuery: {e}. Abortando inicialización de perfiles.")
         return False
 
     # Indexamos por ID para acceso rápido
@@ -90,11 +90,11 @@ def initialize_match_profiles(match_id: str, lineup_list: list):
             match_id=match_id,
             player_id=pid,
             player_name=player.get('name', 'Unknown'),
-            position_group=role, 
-            
+            position_group=role,
+
             # 💾 GUARDADO DEL DUMP COMPLETO
             full_profile_payload=full_payload,
-            
+
             # Columna indexada para búsquedas rápidas
             xg_p30_ref=float(xg_ref) if xg_ref else 0.0
         )
@@ -108,7 +108,9 @@ def initialize_match_profiles(match_id: str, lineup_list: list):
 
             session.add_all(profiles_to_insert)
             session.commit()
-            logger.info(f"✅ CARGA COMPLETA: {len(profiles_to_insert)} perfiles reales de BigQuery persistidos en Postgres.")
+            logger.info(f"✅ CARGA COMPLETA: {len(profiles_to_insert)} perfiles reales "
+                        f"de BigQuery persistidos en Postgres."
+            )
             return True
         except Exception as e:
             session.rollback()
