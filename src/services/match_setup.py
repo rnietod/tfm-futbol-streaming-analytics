@@ -110,7 +110,7 @@ def initialize_match_profiles(match_id: str, lineup_list: list):
             session.commit()
             logger.info(f"✅ CARGA COMPLETA: {len(profiles_to_insert)} perfiles reales "
                         f"de BigQuery persistidos en Postgres."
-            )
+                        )
             return True
         except Exception as e:
             session.rollback()
