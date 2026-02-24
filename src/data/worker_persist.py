@@ -3,11 +3,15 @@ import json
 import time
 import signal
 import sys
+import os
 import math
+import pandas as pd
 from datetime import datetime
 from redis_client import get_redis_connection
 from postgres_client import get_db_engine
 from sqlalchemy import text
+from bigquery_client import BigQueryClient
+
 
 # Configuración
 MATCH_ID = "test_match"
@@ -19,6 +23,8 @@ class PersistenceWorker:
         self.redis = get_redis_connection()
         self.db_engine = get_db_engine()
         self.pubsub = self.redis.pubsub()
+        self.bq_client = BigQueryClient()
+        self._load_player_mapping()
         
         self.tracking_buffer = []
         self.metadata_saved = False
@@ -27,6 +33,17 @@ class PersistenceWorker:
         
         self._check_db_connection()
         signal.signal(signal.SIGINT, self.stop)
+
+    def _load_player_mapping(self):
+        """Carga el mapeo de IDs desde CSV a memoria"""
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        mapping_path = os.path.join(base_dir, 'data', 'dim_player_mapping.csv')
+        try:
+            self.player_mapping_df = pd.read_csv(mapping_path)
+            self._log(f"Mapeo de jugadores cargado: {len(self.player_mapping_df)} registros")
+        except Exception as e:
+            self._log(f"Error cargando mapeo de jugadores: {e}", "ERROR")
+            self.player_mapping_df = pd.DataFrame()
 
     def _log(self, msg, type="INFO"):
         ts = datetime.now().strftime("%H:%M:%S")
@@ -106,8 +123,169 @@ class PersistenceWorker:
             self._log("✅ METADATA GUARDADA", "SUCCESS")
             self.metadata_saved = True
 
+            # Recuperar y enriquecer perfiles de rendimiento y fantasma
+            tracking_pids = [int(p['id']) for p in data['players']]
+            self.save_profile(tracking_pids)
+            self.save_ghost(tracking_pids)
+
         except Exception as e:
             self._log(f"Error Metadata: {e}", "ERROR")
+
+    def _enrich_bq_data(self, df: pd.DataFrame, master_ids_filtered: list, tracking_map: dict, opta_map: dict) -> pd.DataFrame:
+        """Añade tracking_player_id y opta_player_id al dataframe resultante de BQ"""
+        if df.empty:
+            return df
+            
+        # Asegurar que iteramos sobre los recien descargados y vinculamos sus ids
+        df['tracking_player_id'] = df['player_id'].map(tracking_map)
+        df['opta_player_id'] = df['player_id'].map(opta_map)
+        
+        # Renombrar player_id a master_player_id para la BD local
+        df = df.rename(columns={'player_id': 'master_player_id'})
+        return df
+
+    def _upsert_df(self, df: pd.DataFrame, table_name: str, conn):
+        """Implementa un UPSERT manual en PostgreSQL desde un DataFrame"""
+        if df.empty:
+            return
+            
+        # Crear la tabla si no existe usando pandas
+        df.head(0).to_sql(table_name, con=conn, if_exists='append', index=False)
+        
+        columns = list(df.columns)
+        values = [tuple(x) for x in df.to_numpy()]
+        
+        # Generar SQL para ON CONFLICT (master_player_id) DO UPDATE
+        cols_str = '", "'.join(columns)
+        placeholders = ', '.join(['%s'] * len(columns))
+        
+        update_cols = [c for c in columns if c != 'master_player_id']
+        update_str = ', '.join([f'"{c}" = EXCLUDED."{c}"' for c in update_cols])
+        
+        sql = f"""
+            INSERT INTO {table_name} ("{cols_str}")
+            VALUES %s
+            ON CONFLICT (master_player_id) DO UPDATE SET
+            {update_str}
+        """
+        
+        # Necesitamos el cursor raw de pg8000 o psycopg2 a traves de SQLAlchemy
+        from psycopg2.extras import execute_values
+        # Dado que usamos pg8000 (o psycopg2) via sqlalchemy db_engine, extraemos el raw connection
+        raw_conn = conn.connection
+        cursor = raw_conn.cursor()
+        
+        try:
+            # psycopg2 tiene execute_values, pero con pg8000 es distinto.
+            # Mejor usar un enfoque estándar de SQLAlchemy parameters o pandas temporales
+            pass
+        except Exception:
+            pass
+
+    def save_profile(self, tracking_player_ids: list):
+        if self.player_mapping_df.empty or not tracking_player_ids:
+            return
+
+        # Filtrar el mapeo para los jugadores en el partido
+        matched_df = self.player_mapping_df[self.player_mapping_df['tracking_player_id'].isin(tracking_player_ids)]
+        if matched_df.empty:
+            self._log("Ningún tracking_player_id hizo match con el archivo maestro", "WARN")
+            return
+
+        master_ids = matched_df['master_player_id'].dropna().unique().tolist()
+        
+        # Crear diccionarios de busqueda rápida
+        tracking_map = dict(zip(matched_df['master_player_id'], matched_df['tracking_player_id']))
+        opta_map = dict(zip(matched_df['master_player_id'], matched_df['opta_player_id']))
+
+        try:
+            self._log(f"Consultando BigQuery Profile para {len(master_ids)} jugadores...")
+            df_perf = self.bq_client.get_player_performance_profile(master_ids)
+            
+            if not df_perf.empty:
+                df_enriched = self._enrich_bq_data(df_perf, master_ids, tracking_map, opta_map)
+                
+                
+                # Para UPSERT confiable sin db specific libraries complejas:
+                # 1. Guardar en una tabla temporal
+                temp_table = f"temp_{int(time.time()*100)}"
+                df_enriched.to_sql(temp_table, con=self.db_engine, if_exists='replace', index=False)
+                
+                # 2. Hacer UPSERT a la real
+                columns = '", "'.join(df_enriched.columns)
+                update_set = ', '.join([f'"{c}" = EXCLUDED."{c}"' for c in df_enriched.columns if c != 'master_player_id'])
+                
+                with self.db_engine.begin() as conn:
+                    # Crear tabla real si no existe
+                    df_enriched.head(0).to_sql('player_performance_profile', con=conn, if_exists='append', index=False)
+                    # Forzar primary key si es necesario
+                    try:
+                        conn.execute(text('ALTER TABLE player_performance_profile ADD PRIMARY KEY (master_player_id);'))
+                    except Exception:
+                        pass # Ya existe
+                        
+                    upsert_sql = f"""
+                        INSERT INTO player_performance_profile ("{columns}")
+                        SELECT "{columns}" FROM {temp_table}
+                        ON CONFLICT (master_player_id) DO UPDATE SET
+                        {update_set};
+                    """
+                    conn.execute(text(upsert_sql))
+                    # Limpiar temporal
+                    conn.execute(text(f"DROP TABLE {temp_table}"))
+                    
+                self._log(f"✅ Guardados {len(df_enriched)} perfiles de rendimiento en DB local")
+            else:
+                self._log("No se devolvieron datos de rendimiento de BigQuery.", "WARN")
+        except Exception as e:
+            self._log(f"Error guardando perfiles: {e}", "ERROR")
+
+    def save_ghost(self, tracking_player_ids: list):
+        if self.player_mapping_df.empty or not tracking_player_ids:
+            return
+
+        matched_df = self.player_mapping_df[self.player_mapping_df['tracking_player_id'].isin(tracking_player_ids)]
+        if matched_df.empty:
+            return
+
+        master_ids = matched_df['master_player_id'].dropna().unique().tolist()
+        tracking_map = dict(zip(matched_df['master_player_id'], matched_df['tracking_player_id']))
+        opta_map = dict(zip(matched_df['master_player_id'], matched_df['opta_player_id']))
+
+        try:
+            self._log(f"Consultando BigQuery Ghost Profile para {len(master_ids)} jugadores...")
+            df_ghost = self.bq_client.get_ghost_profile(master_ids)
+            
+            if not df_ghost.empty:
+                df_enriched = self._enrich_bq_data(df_ghost, master_ids, tracking_map, opta_map)
+                
+                temp_table = f"temp_ghost_{int(time.time()*100)}"
+                df_enriched.to_sql(temp_table, con=self.db_engine, if_exists='replace', index=False)
+                
+                columns = '", "'.join(df_enriched.columns)
+                update_set = ', '.join([f'"{c}" = EXCLUDED."{c}"' for c in df_enriched.columns if c != 'master_player_id'])
+                
+                with self.db_engine.begin() as conn:
+                    df_enriched.head(0).to_sql('player_ghost_profile', con=conn, if_exists='append', index=False)
+                    try:
+                        conn.execute(text('ALTER TABLE player_ghost_profile ADD PRIMARY KEY (master_player_id);'))
+                    except Exception:
+                        pass
+                        
+                    upsert_sql = f"""
+                        INSERT INTO player_ghost_profile ("{columns}")
+                        SELECT "{columns}" FROM {temp_table}
+                        ON CONFLICT (master_player_id) DO UPDATE SET
+                        {update_set};
+                    """
+                    conn.execute(text(upsert_sql))
+                    conn.execute(text(f"DROP TABLE {temp_table}"))
+                    
+                self._log(f"✅ Guardados {len(df_enriched)} perfiles fantasma en DB local")
+            else:
+                 self._log("No se devolvieron datos de perfil fantasma de BigQuery.", "WARN")
+        except Exception as e:
+            self._log(f"Error guardando ghost profile: {e}", "ERROR")
 
     def save_event(self, msg):
         try:
