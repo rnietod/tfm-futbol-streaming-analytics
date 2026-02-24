@@ -25,14 +25,14 @@ WITH
       'Field Player' as player_type,
 
       -- Métricas Ponderadas Campo
-      SAFE_DIVIDE(SUM(p.goals_p30 * w.recency_weight), SUM(w.recency_weight)) as w_goals_p30,
-      SAFE_DIVIDE(SUM(p.xg_p30 * w.recency_weight), SUM(w.recency_weight)) as w_xg_p30,
-      SAFE_DIVIDE(SUM(p.shots_p30 * w.recency_weight), SUM(w.recency_weight)) as w_shots_p30,
-      SAFE_DIVIDE(SUM(p.key_passes_p30 * w.recency_weight), SUM(w.recency_weight)) as w_key_passes_p30,
-      SAFE_DIVIDE(SUM(p.passes_vertical_p30 * w.recency_weight), SUM(w.recency_weight)) as w_progressive_p30,
-      SAFE_DIVIDE(SUM(p.dribble_success_pct * w.recency_weight), SUM(w.recency_weight)) as w_dribble_pct,
-      SAFE_DIVIDE(SUM(p.interceptions_p30 * w.recency_weight), SUM(w.recency_weight)) as w_interceptions_p30,
-      SAFE_DIVIDE(SUM(p.recoveries_p30 * w.recency_weight), SUM(w.recency_weight)) as w_recoveries_p30
+      SAFE_DIVIDE(SUM(COALESCE(p.goals_p30, 0) * w.recency_weight), SUM(w.recency_weight)) as w_goals_p30,
+      SAFE_DIVIDE(SUM(COALESCE(p.xg_p30, 0) * w.recency_weight), SUM(w.recency_weight)) as w_xg_p30,
+      SAFE_DIVIDE(SUM(COALESCE(p.shots_p30, 0) * w.recency_weight), SUM(w.recency_weight)) as w_shots_p30,
+      SAFE_DIVIDE(SUM(COALESCE(p.key_passes_p30, 0) * w.recency_weight), SUM(w.recency_weight)) as w_key_passes_p30,
+      SAFE_DIVIDE(SUM(COALESCE(p.passes_vertical_p30, 0) * w.recency_weight), SUM(w.recency_weight)) as w_progressive_p30,
+      SAFE_DIVIDE(SUM(COALESCE(p.dribble_success_pct, 0.0) * w.recency_weight), SUM(w.recency_weight)) as w_dribble_pct,
+      SAFE_DIVIDE(SUM(COALESCE(p.interceptions_p30, 0) * w.recency_weight), SUM(w.recency_weight)) as w_interceptions_p30,
+      SAFE_DIVIDE(SUM(COALESCE(p.recoveries_p30, 0) * w.recency_weight), SUM(w.recency_weight)) as w_recoveries_p30
 
     FROM ${ref("fct_player_season_profile")} p
     JOIN season_weights w ON p.season = w.season
@@ -48,10 +48,10 @@ WITH
       'Goalkeeper' as player_type,
 
       -- Métricas GK Ponderadas
-      SAFE_DIVIDE(SUM(g.saves * w.recency_weight), SUM(w.recency_weight)) as w_saves_vol,
-      SAFE_DIVIDE(SUM(g.saves_reflex * w.recency_weight), SUM(w.recency_weight)) as w_reflex_saves,
-      SAFE_DIVIDE(SUM(g.long_pass_share * w.recency_weight), SUM(w.recency_weight)) as w_long_dist_share,
-      SAFE_DIVIDE(SUM(g.distribution_accuracy * w.recency_weight), SUM(w.recency_weight)) as w_dist_accuracy
+      SAFE_DIVIDE(SUM(COALESCE(g.saves, 0) * w.recency_weight), SUM(w.recency_weight)) as w_saves_vol,
+      SAFE_DIVIDE(SUM(COALESCE(g.saves_reflex, 0) * w.recency_weight), SUM(w.recency_weight)) as w_reflex_saves,
+      SAFE_DIVIDE(SUM(COALESCE(g.long_pass_share, 0.0) * w.recency_weight), SUM(w.recency_weight)) as w_long_dist_share,
+      SAFE_DIVIDE(SUM(COALESCE(g.distribution_accuracy, 0.0) * w.recency_weight), SUM(w.recency_weight)) as w_dist_accuracy
 
     FROM ${ref("fct_goalkeeper_season_profile")} g
     JOIN season_weights w ON g.season = w.season

@@ -12,6 +12,8 @@ def init_tables():
     DROP TABLE IF EXISTS match_events CASCADE;
     DROP TABLE IF EXISTS match_players CASCADE;
     DROP TABLE IF EXISTS matches CASCADE;
+    DROP TABLE IF EXISTS player_season_profile CASCADE;
+    DROP TABLE IF EXISTS player_ghost_profile CASCADE;
 
     -- 1. PARTIDOS (Metadata)
     CREATE TABLE IF NOT EXISTS matches (
@@ -85,12 +87,93 @@ def init_tables():
     );
     
     CREATE INDEX IF NOT EXISTS idx_tracking_match ON match_tracking(match_id, frame_idx);
+
+    -- 5. SEASON PROFILE (BigQuery Cache)
+    CREATE TABLE IF NOT EXISTS player_season_profile (
+        master_player_id VARCHAR(50),
+        tracking_player_id INTEGER,
+        opta_player_id INTEGER,
+        player_name VARCHAR(100),
+        season VARCHAR(50),
+        team_id VARCHAR(50),
+        game_state VARCHAR(50),
+        matches_played INTEGER,
+        last_match_date TIMESTAMP,
+        goals INTEGER,
+        shots_total INTEGER,
+        shots_on_target INTEGER,
+        shots_blocked INTEGER,
+        total_xg FLOAT,
+        shots_inside_box INTEGER,
+        shots_outside_box INTEGER,
+        passes_total INTEGER,
+        passes_completed INTEGER,
+        passes_vertical INTEGER,
+        passes_horizontal INTEGER,
+        passes_short INTEGER,
+        passes_long INTEGER,
+        key_passes INTEGER,
+        assists INTEGER,
+        crosses INTEGER,
+        dribbles_attempted INTEGER,
+        dribbles_completed INTEGER,
+        dispossessed INTEGER,
+        interceptions INTEGER,
+        tackles INTEGER,
+        recoveries INTEGER,
+        fouls_committed INTEGER,
+        minutes_played INTEGER,
+        shot_accuracy_pct FLOAT,
+        pass_accuracy_pct FLOAT,
+        dribble_success_pct FLOAT,
+        goals_p30 FLOAT,
+        xg_p30 FLOAT,
+        shots_p30 FLOAT,
+        passes_vertical_p30 FLOAT,
+        key_passes_p30 FLOAT,
+        interceptions_p30 FLOAT,
+        recoveries_p30 FLOAT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (master_player_id, season, team_id, game_state)
+    );
+
+    -- 6. GHOST PROFILE (BigQuery Benchmarking Cache)
+    CREATE TABLE IF NOT EXISTS player_ghost_profile (
+        master_player_id VARCHAR(50) PRIMARY KEY,
+        tracking_player_id INTEGER,
+        opta_player_id INTEGER,
+        player_name VARCHAR(100),
+        current_team_id VARCHAR(50),
+        player_type VARCHAR(50),
+        w_goals_p30 FLOAT,
+        w_xg_p30 FLOAT,
+        w_shots_p30 FLOAT,
+        w_key_passes_p30 FLOAT,
+        w_progressive_p30 FLOAT,
+        w_dribble_pct FLOAT,
+        w_interceptions_p30 FLOAT,
+        w_recoveries_p30 FLOAT,
+        w_saves_vol FLOAT,
+        w_reflex_saves FLOAT,
+        w_long_dist_share FLOAT,
+        w_dist_accuracy FLOAT,
+        pct_xg FLOAT,
+        pct_goals FLOAT,
+        pct_shots FLOAT,
+        pct_creation FLOAT,
+        pct_progression FLOAT,
+        pct_defense FLOAT,
+        pct_workrate FLOAT,
+        pct_saves FLOAT,
+        pct_distribution FLOAT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
     """
     
     with engine.connect() as conn:
         conn.execute(text(ddl))
         conn.commit()
-        print("✅ Tablas creadas en Docker Local.")
+        print("Tablas creadas en Docker Local.")
 
 if __name__ == "__main__":
     init_tables()
