@@ -50,17 +50,17 @@ class BigQueryClient:
             logger.error(f"Error inicializando cliente BigQuery: {e}")
             raise
 
-    def get_player_performance_profile(self, player_ids: List[str]) -> pd.DataFrame:
+    def get_player_season_profile(self, player_ids: List[str]) -> pd.DataFrame:
         """
         Obtiene el perfil de rendimiento para una lista de jugadores.
-        Tabla: tfm-master-futbol.marts_football.fct_player_performance_profile
+        Tabla: tfm-master-futbol.marts_football.fct_player_season_profile
         """
         if not player_ids:
             return pd.DataFrame()
 
         query = """
             SELECT *
-            FROM `tfm-master-futbol.marts_football.fct_player_performance_profile`
+            FROM `tfm-master-futbol.marts_football.fct_player_season_profile`
             WHERE player_id IN UNNEST(@player_ids)
         """
         
@@ -74,7 +74,7 @@ class BigQueryClient:
             df = self._client.query(query, job_config=job_config).to_dataframe()
             return df
         except Exception as e:
-            logger.error(f"Error consultando fct_player_performance_profile: {e}")
+            logger.error(f"Error consultando fct_player_season_profile: {e}")
             raise
 
     def get_ghost_profile(self, player_ids: List[str]) -> pd.DataFrame:

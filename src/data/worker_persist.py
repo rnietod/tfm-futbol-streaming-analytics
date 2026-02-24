@@ -53,7 +53,7 @@ class PersistenceWorker:
         try:
             with self.db_engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
-            self._log("Base de Datos Local CONECTADA 🟢")
+            self._log("Base de Datos Local CONECTADA")
         except Exception as e:
             self._log(f"NO HAY CONEXIÓN A DB: {e}", "CRITICAL")
             sys.exit(1)
@@ -81,7 +81,7 @@ class PersistenceWorker:
         raw = self.redis.get(f"match:{MATCH_ID}:metadata")
         if not raw:
             if int(time.time()) % 5 == 0:
-                self._log("⏳ Esperando Metadata (Dale a 'Enviar Alineación')...", "WAIT")
+                self._log("Esperando Metadata (Dale a 'Enviar Alineación')...", "WAIT")
             return
 
         try:
@@ -120,12 +120,12 @@ class PersistenceWorker:
                         ON CONFLICT (match_id, player_id) DO NOTHING
                     """), players)
             
-            self._log("✅ METADATA GUARDADA", "SUCCESS")
+            self._log("METADATA GUARDADA", "SUCCESS")
             self.metadata_saved = True
 
             # Recuperar y enriquecer perfiles de rendimiento y fantasma
             tracking_pids = [int(p['id']) for p in data['players']]
-            self.save_profile(tracking_pids)
+            self.save_season_profile(tracking_pids)
             self.save_ghost(tracking_pids)
 
         except Exception as e:
@@ -182,7 +182,7 @@ class PersistenceWorker:
         except Exception:
             pass
 
-    def save_profile(self, tracking_player_ids: list):
+    def save_season_profile(self, tracking_player_ids: list):
         if self.player_mapping_df.empty or not tracking_player_ids:
             return
 
@@ -199,42 +199,37 @@ class PersistenceWorker:
         opta_map = dict(zip(matched_df['master_player_id'], matched_df['opta_player_id']))
 
         try:
-            self._log(f"Consultando BigQuery Profile para {len(master_ids)} jugadores...")
-            df_perf = self.bq_client.get_player_performance_profile(master_ids)
+            self._log(f"Consultando BigQuery Season Profile para {len(master_ids)} jugadores...")
+            df_perf = self.bq_client.get_player_season_profile(master_ids)
             
             if not df_perf.empty:
                 df_enriched = self._enrich_bq_data(df_perf, master_ids, tracking_map, opta_map)
                 
-                
                 # Para UPSERT confiable sin db specific libraries complejas:
-                # 1. Guardar en una tabla temporal
+                # 1. Asegurar que no hay NaNs ni NaTs que rompan pg8000
+                df_enriched = df_enriched.where(pd.notnull(df_enriched), None)
+
+                # 2. Guardar en una tabla temporal
                 temp_table = f"temp_{int(time.time()*100)}"
                 df_enriched.to_sql(temp_table, con=self.db_engine, if_exists='replace', index=False)
                 
-                # 2. Hacer UPSERT a la real
+                # 3. Hacer UPSERT a la real
                 columns = '", "'.join(df_enriched.columns)
                 update_set = ', '.join([f'"{c}" = EXCLUDED."{c}"' for c in df_enriched.columns if c != 'master_player_id'])
                 
-                with self.db_engine.begin() as conn:
-                    # Crear tabla real si no existe
-                    df_enriched.head(0).to_sql('player_performance_profile', con=conn, if_exists='append', index=False)
-                    # Forzar primary key si es necesario
-                    try:
-                        conn.execute(text('ALTER TABLE player_performance_profile ADD PRIMARY KEY (master_player_id);'))
-                    except Exception:
-                        pass # Ya existe
-                        
-                    upsert_sql = f"""
-                        INSERT INTO player_performance_profile ("{columns}")
-                        SELECT "{columns}" FROM {temp_table}
-                        ON CONFLICT (master_player_id) DO UPDATE SET
-                        {update_set};
-                    """
-                    conn.execute(text(upsert_sql))
-                    # Limpiar temporal
-                    conn.execute(text(f"DROP TABLE {temp_table}"))
+                # Envolver en try-except por statement para aislar el transaction abortion
+                with self.db_engine.connect() as conn:
+                    with conn.begin():    
+                        upsert_sql = f"""
+                            INSERT INTO player_season_profile ("{columns}")
+                            SELECT "{columns}" FROM {temp_table}
+                            ON CONFLICT (master_player_id, season, team_id, game_state) DO UPDATE SET
+                            {update_set};
+                        """
+                        conn.execute(text(upsert_sql))
+                        conn.execute(text(f"DROP TABLE {temp_table}"))
                     
-                self._log(f"✅ Guardados {len(df_enriched)} perfiles de rendimiento en DB local")
+                self._log(f"✅ Guardados {len(df_enriched)} perfiles de temporada en DB local")
             else:
                 self._log("No se devolvieron datos de rendimiento de BigQuery.", "WARN")
         except Exception as e:
@@ -258,28 +253,25 @@ class PersistenceWorker:
             
             if not df_ghost.empty:
                 df_enriched = self._enrich_bq_data(df_ghost, master_ids, tracking_map, opta_map)
-                
+                # 1. Asegurar limpieza de NaNs para db-dtypes/pg8000
+                df_enriched = df_enriched.where(pd.notnull(df_enriched), None)
+
                 temp_table = f"temp_ghost_{int(time.time()*100)}"
                 df_enriched.to_sql(temp_table, con=self.db_engine, if_exists='replace', index=False)
                 
                 columns = '", "'.join(df_enriched.columns)
                 update_set = ', '.join([f'"{c}" = EXCLUDED."{c}"' for c in df_enriched.columns if c != 'master_player_id'])
                 
-                with self.db_engine.begin() as conn:
-                    df_enriched.head(0).to_sql('player_ghost_profile', con=conn, if_exists='append', index=False)
-                    try:
-                        conn.execute(text('ALTER TABLE player_ghost_profile ADD PRIMARY KEY (master_player_id);'))
-                    except Exception:
-                        pass
-                        
-                    upsert_sql = f"""
-                        INSERT INTO player_ghost_profile ("{columns}")
-                        SELECT "{columns}" FROM {temp_table}
-                        ON CONFLICT (master_player_id) DO UPDATE SET
-                        {update_set};
-                    """
-                    conn.execute(text(upsert_sql))
-                    conn.execute(text(f"DROP TABLE {temp_table}"))
+                with self.db_engine.connect() as conn:
+                    with conn.begin():
+                        upsert_sql = f"""
+                            INSERT INTO player_ghost_profile ("{columns}")
+                            SELECT "{columns}" FROM {temp_table}
+                            ON CONFLICT (master_player_id) DO UPDATE SET
+                            {update_set};
+                        """
+                        conn.execute(text(upsert_sql))
+                        conn.execute(text(f"DROP TABLE {temp_table}"))
                     
                 self._log(f"✅ Guardados {len(df_enriched)} perfiles fantasma en DB local")
             else:
@@ -354,13 +346,13 @@ class PersistenceWorker:
             # Log más detallado para debug
             tipo = ev.get('event_type_name', 'Evento')
             subtipo = f"({ev.get('type_name')})" if ev.get('type_name') else ""
-            self._log(f"⚽ Guardado: {tipo} {subtipo} - Min {ev.get('minute')}")
+            self._log(f"Guardado: {tipo} {subtipo} - Min {ev.get('minute')}")
             
         except Exception as e:
             self._log(f"Error saving event: {e}", "ERROR")
 
     def run(self):
-        self._log("👷 WORKER ACTIVO - Modo Inspección Superado", "INFO")
+        self._log("WORKER ACTIVO - Modo Inspección Superado", "INFO")
         self.pubsub.subscribe(f"match:{MATCH_ID}:events")
         
         while self.running:
@@ -389,7 +381,7 @@ class PersistenceWorker:
                     if frame_idx is not None:
                         frame_idx = int(frame_idx)
                         
-                        # ✨ LA CLAVE: Si es el mismo frame que ya guardé, PASAR
+                        # LA CLAVE: Si es el mismo frame que ya guardé, PASAR
                         if frame_idx > self.last_saved_frame_idx:
                             
                             self.tracking_buffer.append({
@@ -416,7 +408,7 @@ class PersistenceWorker:
                     
                     # Mensaje de éxito
                     last_frame = self.tracking_buffer[-1]['idx']
-                    self._log(f"📡 Tracking Guardado (Bloque de {len(self.tracking_buffer)}). Último Frame: {last_frame}", "DEBUG")
+                    self._log(f"Tracking Guardado (Bloque de {len(self.tracking_buffer)}). Último Frame: {last_frame}", "DEBUG")
                     self.tracking_buffer = []
                     
                 except Exception as e:
