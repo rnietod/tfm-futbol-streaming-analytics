@@ -75,7 +75,7 @@ WITH
       SUM(CASE WHEN e.type_id IN (13, 14, 15, 16) THEN 1 ELSE 0 END) as shots_total,
       -- On Target: Goles (16) + Paradas (15)
       SUM(CASE WHEN e.type_id IN (15, 16) THEN 1 ELSE 0 END) as shots_on_target,
-      SUM(CASE WHEN e.is_blocked_shot THEN 1 ELSE 0 END) as shots_blocked,
+      SUM(CASE WHEN COALESCE(e.is_blocked_shot, FALSE) THEN 1 ELSE 0 END) as shots_blocked,
       -- xG Predictivo
       SUM(COALESCE(x.predicted_xg, 0)) as total_xg,
       -- Desglose Distancia
@@ -84,21 +84,21 @@ WITH
       
       -- === PASES ===
       SUM(CASE WHEN e.type_id = 1 THEN 1 ELSE 0 END) as passes_total,
-      SUM(CASE WHEN e.type_id = 1 AND e.outcome = 1 THEN 1 ELSE 0 END) as passes_completed,
+      SUM(CASE WHEN e.type_id = 1 AND COALESCE(e.outcome, 0) = 1 THEN 1 ELSE 0 END) as passes_completed,
       -- Verticalidad (Join con CTE pass_details)
-      SUM(CASE WHEN pd.is_vertical THEN 1 ELSE 0 END) as passes_vertical,
-      SUM(CASE WHEN NOT pd.is_vertical THEN 1 ELSE 0 END) as passes_horizontal,
+      SUM(CASE WHEN COALESCE(pd.is_vertical, FALSE) THEN 1 ELSE 0 END) as passes_vertical,
+      SUM(CASE WHEN NOT COALESCE(pd.is_vertical, FALSE) THEN 1 ELSE 0 END) as passes_horizontal,
       -- Rangos
       SUM(CASE WHEN pd.pass_range = 'Short' THEN 1 ELSE 0 END) as passes_short,
       SUM(CASE WHEN pd.pass_range = 'Long' THEN 1 ELSE 0 END) as passes_long,
       -- Creación
-      SUM(CASE WHEN e.is_key_pass THEN 1 ELSE 0 END) as key_passes,
-      SUM(CASE WHEN e.is_assist THEN 1 ELSE 0 END) as assists,
-      SUM(CASE WHEN e.is_cross THEN 1 ELSE 0 END) as crosses,
+      SUM(CASE WHEN COALESCE(e.is_key_pass, FALSE) THEN 1 ELSE 0 END) as key_passes,
+      SUM(CASE WHEN COALESCE(e.is_assist, FALSE) THEN 1 ELSE 0 END) as assists,
+      SUM(CASE WHEN COALESCE(e.is_cross, FALSE) THEN 1 ELSE 0 END) as crosses,
 
       -- === POSESIÓN & REGATE ===
       SUM(CASE WHEN e.type_id = 3 THEN 1 ELSE 0 END) as dribbles_attempted,
-      SUM(CASE WHEN e.type_id = 3 AND e.outcome = 1 THEN 1 ELSE 0 END) as dribbles_completed,
+      SUM(CASE WHEN e.type_id = 3 AND COALESCE(e.outcome, 0) = 1 THEN 1 ELSE 0 END) as dribbles_completed,
       SUM(CASE WHEN e.type_id = 50 THEN 1 ELSE 0 END) as dispossessed,
 
       -- === DEFENSA ===
@@ -110,7 +110,7 @@ WITH
     FROM ${ref("fct_events_enriched")} e
     LEFT JOIN shots_with_xg x USING(event_key)
     LEFT JOIN pass_details pd USING(event_key)
-    WHERE e.player_position_desc NOT LIKE '%Goalkeeper%'
+    WHERE COALESCE(e.player_position_desc, 'Unknown') NOT LIKE '%Goalkeeper%'
     GROUP BY 1, 2, 3, 4, 5
   )
 
@@ -125,18 +125,18 @@ SELECT
   SAFE_DIVIDE(a.dribbles_completed, a.dribbles_attempted) as dribble_success_pct,
   
   -- Métricas Normalizadas p30
-  (a.goals / NULLIF(pm.minutes_played, 0)) * 30 as goals_p30,
-  (a.total_xg / NULLIF(pm.minutes_played, 0)) * 30 as xg_p30,
-  (a.shots_total / NULLIF(pm.minutes_played, 0)) * 30 as shots_p30,
-  (a.passes_vertical / NULLIF(pm.minutes_played, 0)) * 30 as passes_vertical_p30,
-  (a.key_passes / NULLIF(pm.minutes_played, 0)) * 30 as key_passes_p30,
-  (a.interceptions / NULLIF(pm.minutes_played, 0)) * 30 as interceptions_p30,
-  (a.recoveries / NULLIF(pm.minutes_played, 0)) * 30 as recoveries_p30
+  (COALESCE(a.goals, 0) / NULLIF(COALESCE(pm.minutes_played, 90), 0)) * 30 as goals_p30,
+  (COALESCE(a.total_xg, 0) / NULLIF(COALESCE(pm.minutes_played, 90), 0)) * 30 as xg_p30,
+  (COALESCE(a.shots_total, 0) / NULLIF(COALESCE(pm.minutes_played, 90), 0)) * 30 as shots_p30,
+  (COALESCE(a.passes_vertical, 0) / NULLIF(COALESCE(pm.minutes_played, 90), 0)) * 30 as passes_vertical_p30,
+  (COALESCE(a.key_passes, 0) / NULLIF(COALESCE(pm.minutes_played, 90), 0)) * 30 as key_passes_p30,
+  (COALESCE(a.interceptions, 0) / NULLIF(COALESCE(pm.minutes_played, 90), 0)) * 30 as interceptions_p30,
+  (COALESCE(a.recoveries, 0) / NULLIF(COALESCE(pm.minutes_played, 90), 0)) * 30 as recoveries_p30
 
 FROM agg_stats a
 LEFT JOIN player_minutes pm 
-  ON a.player_id = pm.player_id 
-  AND a.season = pm.season 
-  AND a.team_id = pm.team_id 
-  AND a.game_state = pm.game_state
-WHERE pm.minutes_played > 0
+  ON COALESCE(CAST(a.player_id AS STRING), '0') = COALESCE(CAST(pm.player_id AS STRING), '0')
+  AND COALESCE(a.season, 'Unknown') = COALESCE(pm.season, 'Unknown') 
+  AND COALESCE(a.team_id, 'Unknown') = COALESCE(pm.team_id, 'Unknown') 
+  AND a.game_state = COALESCE(pm.game_state, 'Drawing')
+WHERE COALESCE(pm.minutes_played, 90) > 0

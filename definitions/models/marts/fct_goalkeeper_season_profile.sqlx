@@ -8,7 +8,7 @@ config {
 WITH 
   gk_events AS (
     SELECT * FROM ${ref("fct_events_enriched")}
-    WHERE player_position_desc LIKE '%Goalkeeper%'
+    WHERE COALESCE(player_position_desc, 'Unknown') LIKE '%Goalkeeper%'
   ),
   
   gk_stats AS (
@@ -21,16 +21,16 @@ WITH
       
       -- Shot Stopping
       SUM(CASE WHEN type_id = 15 THEN 1 ELSE 0 END) as saves,
-      SUM(CASE WHEN gk_diving_save OR gk_standing_save OR gk_stooping_save THEN 1 ELSE 0 END) as saves_reflex,
+      SUM(CASE WHEN COALESCE(gk_diving_save, FALSE) OR COALESCE(gk_standing_save, FALSE) OR COALESCE(gk_stooping_save, FALSE) THEN 1 ELSE 0 END) as saves_reflex,
       
       -- Claims (Juego Aéreo)
-      SUM(CASE WHEN type_id = 10 AND outcome = 1 THEN 1 ELSE 0 END) as claims_successful, 
+      SUM(CASE WHEN type_id = 10 AND COALESCE(outcome, 0) = 1 THEN 1 ELSE 0 END) as claims_successful, 
 
       -- Distribución
       SUM(CASE WHEN type_id = 1 THEN 1 ELSE 0 END) as passes_total,
-      SUM(CASE WHEN type_id = 1 AND is_long_ball THEN 1 ELSE 0 END) as passes_long,
-      SUM(CASE WHEN type_id = 1 AND NOT is_long_ball THEN 1 ELSE 0 END) as passes_short,
-      SUM(CASE WHEN type_id = 1 AND outcome = 1 THEN 1 ELSE 0 END) as passes_complete
+      SUM(CASE WHEN type_id = 1 AND COALESCE(is_long_ball, FALSE) THEN 1 ELSE 0 END) as passes_long,
+      SUM(CASE WHEN type_id = 1 AND NOT COALESCE(is_long_ball, FALSE) THEN 1 ELSE 0 END) as passes_short,
+      SUM(CASE WHEN type_id = 1 AND COALESCE(outcome, 0) = 1 THEN 1 ELSE 0 END) as passes_complete
 
     FROM gk_events
     GROUP BY 1, 2, 3, 4, 5
