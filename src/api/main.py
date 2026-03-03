@@ -104,40 +104,49 @@ def reset_all_data():
 @app.get("/match/{match_id}/metadata")
 def get_match_metadata(match_id: str):
     """
-    Endpoint para obtener la alineación inicial.
+    Endpoint para obtener la alineación inicial y datos del partido.
     """
     try:
         engine = get_db_engine()
         with engine.connect() as conn:
-            # 1. Consulta SQL Directa
-            # Buscamos los jugadores asociados a este partido
+            # 1. Consulta SQL de Match Info
+            match_query = text("""
+                SELECT home_team_id, home_team_name, home_team_acronym, 
+                       away_team_id, away_team_name, away_team_acronym
+                FROM matches
+                WHERE match_id = :mid
+            """)
+            match_result = conn.execute(match_query, {"mid": match_id}).fetchone()
+
+            # 2. Consulta SQL de Jugadores
             query = text("""
                 SELECT player_id, team_id, name, dorsal, position
                 FROM match_players
                 WHERE match_id = :mid
             """)
-
             result = conn.execute(query, {"mid": match_id}).fetchall()
 
-            # 2. Validación de Negocio
+            # Validación de Negocio
             if not result:
-                # Si Postgres no tiene datos, es que el proceso de carga falló antes
                 return {"error": "Alineación no encontrada en Base de Datos. Verifique la carga inicial."}
 
-            # 3. Serialización (Mapping DB -> Frontend)
-            # Transformamos las columnas de la DB al JSON que espera React
+            # Serialización
             players_list = []
             for row in result:
                 players_list.append({
-                    "player_id": row.player_id,     # React key
-                    "team_id": row.team_id,         # Para colores
-                    "short_name": row.name,         # Display
-                    "number": row.dorsal,           # Dorsal
-                    "role": row.position            # Posición (GK, etc)
+                    "player_id": row.player_id,
+                    "team_id": row.team_id,
+                    "short_name": row.name,
+                    "number": row.dorsal,
+                    "role": row.position
                 })
+                
+            match_data = None
+            if match_result:
+                match_data = dict(match_result._mapping)
 
             print(f"✅ Metadata servida desde SQL: {len(players_list)} jugadores.")
-            return {"players": players_list}
+            return {"match": match_data, "players": players_list}
 
     except Exception as e:
         print(f"❌ Error crítico leyendo DB: {e}")

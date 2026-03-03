@@ -20,8 +20,10 @@ def init_tables():
         match_id VARCHAR(50) PRIMARY KEY,
         home_team_id INTEGER,
         home_team_name VARCHAR(100),
+        home_team_acronym VARCHAR(10),
         away_team_id INTEGER,
         away_team_name VARCHAR(100),
+        away_team_acronym VARCHAR(10),
         match_date TIMESTAMP,
         stadium VARCHAR(100),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

@@ -90,15 +90,19 @@ class PersistenceWorker:
             with self.db_engine.begin() as conn:
                 # 1. Matches
                 conn.execute(text("""
-                    INSERT INTO matches (match_id, home_team_name, away_team_name, match_date, stadium)
-                    VALUES (:mid, :home, :away, :date, :stad)
+                    INSERT INTO matches (match_id, home_team_id, home_team_name, home_team_acronym, away_team_id, away_team_name, away_team_acronym, match_date, stadium)
+                    VALUES (:mid, :home_id, :home_name, :home_acronym, :away_id, :away_name, :away_acronym, :date, :stad)
                     ON CONFLICT (match_id) DO NOTHING
                 """), {
                     "mid": MATCH_ID, 
-                    "home": data['home_team']['short_name'], 
-                    "away": data['away_team']['short_name'],
+                    "home_id": data.get('home_team', {}).get('id'),
+                    "home_name": data.get('home_team', {}).get('short_name', ''), 
+                    "home_acronym": data.get('home_team', {}).get('acronym', ''),
+                    "away_id": data.get('away_team', {}).get('id'),
+                    "away_name": data.get('away_team', {}).get('short_name', ''),
+                    "away_acronym": data.get('away_team', {}).get('acronym', ''),
                     "date": data.get('match_date') or datetime.now(),
-                    "stad": data.get('stadium')
+                    "stad": data.get('stadium', {}).get('name') if isinstance(data.get('stadium'), dict) else data.get('stadium')
                 })
                 
                 # 2. Players
@@ -208,6 +212,9 @@ class PersistenceWorker:
                 # Para UPSERT confiable sin db specific libraries complejas:
                 # 1. Asegurar que no hay NaNs ni NaTs que rompan pg8000
                 df_enriched = df_enriched.where(pd.notnull(df_enriched), None)
+                
+                # Prevenir error: ON CONFLICT DO UPDATE command cannot affect row a second time
+                df_enriched = df_enriched.drop_duplicates(subset=['master_player_id', 'season', 'team_id', 'game_state'])
 
                 # 2. Guardar en una tabla temporal
                 temp_table = f"temp_{int(time.time()*100)}"
@@ -255,6 +262,9 @@ class PersistenceWorker:
                 df_enriched = self._enrich_bq_data(df_ghost, master_ids, tracking_map, opta_map)
                 # 1. Asegurar limpieza de NaNs para db-dtypes/pg8000
                 df_enriched = df_enriched.where(pd.notnull(df_enriched), None)
+
+                # Prevenir error: ON CONFLICT DO UPDATE command cannot affect row a second time
+                df_enriched = df_enriched.drop_duplicates(subset=['master_player_id'])
 
                 temp_table = f"temp_ghost_{int(time.time()*100)}"
                 df_enriched.to_sql(temp_table, con=self.db_engine, if_exists='replace', index=False)
