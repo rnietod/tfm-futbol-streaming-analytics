@@ -92,7 +92,15 @@ class PersistenceWorker:
                 conn.execute(text("""
                     INSERT INTO matches (match_id, home_team_id, home_team_name, home_team_acronym, away_team_id, away_team_name, away_team_acronym, match_date, stadium)
                     VALUES (:mid, :home_id, :home_name, :home_acronym, :away_id, :away_name, :away_acronym, :date, :stad)
-                    ON CONFLICT (match_id) DO NOTHING
+                    ON CONFLICT (match_id) DO UPDATE SET 
+                        home_team_id = EXCLUDED.home_team_id,
+                        home_team_name = EXCLUDED.home_team_name,
+                        home_team_acronym = EXCLUDED.home_team_acronym,
+                        away_team_id = EXCLUDED.away_team_id,
+                        away_team_name = EXCLUDED.away_team_name,
+                        away_team_acronym = EXCLUDED.away_team_acronym,
+                        match_date = EXCLUDED.match_date,
+                        stadium = EXCLUDED.stadium
                 """), {
                     "mid": MATCH_ID, 
                     "home_id": data.get('home_team', {}).get('id'),
