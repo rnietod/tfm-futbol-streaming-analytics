@@ -385,6 +385,24 @@ function App() {
     }));
   }, [playerMap]);
 
+  // Cálculo Dinámico del Marcador (GOAL = event_type_id 16 + outcome_id 97)
+  const matchScore = useMemo(() => {
+    let home = 0;
+    let away = 0;
+    if (!matchInfo) return { home, away };
+
+    eventsList.forEach(evt => {
+      if (evt.event_type_id === 16 && evt.outcome_id === 97) {
+        if (evt.team_name === matchInfo.home_team_name) {
+          home += 1;
+        } else if (evt.team_name === matchInfo.away_team_name) {
+          away += 1;
+        }
+      }
+    });
+    return { home, away };
+  }, [eventsList, matchInfo]);
+
 
   // --- RENDER FINAL ---
   return (
@@ -442,7 +460,7 @@ function App() {
                 {matchInfo ? matchInfo.home_team_acronym : 'HOME'}
               </span>
               <div className="text-3xl font-mono font-bold text-white tracking-widest drop-shadow-lg">
-                0<span className="text-zinc-600 mx-3 text-2xl">:</span>0
+                {matchScore.home}<span className="text-zinc-600 mx-3 text-2xl">:</span>{matchScore.away}
               </div>
               <span className="text-sm font-bold text-zinc-400 tracking-wider">
                 {matchInfo ? matchInfo.away_team_acronym : 'AWAY'}
