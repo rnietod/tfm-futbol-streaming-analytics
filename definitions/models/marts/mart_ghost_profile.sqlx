@@ -22,6 +22,7 @@ WITH
       p.player_id,
       ANY_VALUE(p.player_name) as player_name,
       ANY_VALUE(p.team_id) as current_team_id,
+      p.game_state,
       'Field Player' as player_type,
 
       -- Métricas Ponderadas Campo
@@ -36,7 +37,7 @@ WITH
 
     FROM ${ref("fct_player_season_profile")} p
     JOIN season_weights w ON p.season = w.season
-    GROUP BY p.player_id
+    GROUP BY p.player_id, p.game_state
   ),
 
   -- 3. PROCESAMIENTO PORTEROS
@@ -45,6 +46,7 @@ WITH
       g.player_id,
       ANY_VALUE(g.player_name) as player_name,
       ANY_VALUE(g.team_id) as current_team_id,
+      g.game_state,
       'Goalkeeper' as player_type,
 
       -- Métricas GK Ponderadas
@@ -55,14 +57,14 @@ WITH
 
     FROM ${ref("fct_goalkeeper_season_profile")} g
     JOIN season_weights w ON g.season = w.season
-    GROUP BY g.player_id
+    GROUP BY g.player_id, g.game_state
   ),
 
   -- 4. BENCHMARKING (Percentiles Unificados)
   benchmarking AS (
     -- BLOQUE A: JUGADORES DE CAMPO
     SELECT 
-      player_id, player_name, current_team_id, player_type,
+      player_id, player_name, current_team_id, player_type, game_state,
       
       -- Métricas de Campo (Existen)
       w_goals_p30, w_xg_p30, w_shots_p30, w_key_passes_p30, 
@@ -75,13 +77,13 @@ WITH
       CAST(NULL as FLOAT64) as w_dist_accuracy,
 
       -- Percentiles Calculados (Campo)
-      PERCENT_RANK() OVER (PARTITION BY player_type ORDER BY w_xg_p30 ASC) as pct_xg,
-      PERCENT_RANK() OVER (PARTITION BY player_type ORDER BY w_goals_p30 ASC) as pct_goals,
-      PERCENT_RANK() OVER (PARTITION BY player_type ORDER BY w_shots_p30 ASC) as pct_shots,
-      PERCENT_RANK() OVER (PARTITION BY player_type ORDER BY w_key_passes_p30 ASC) as pct_creation,
-      PERCENT_RANK() OVER (PARTITION BY player_type ORDER BY w_progressive_p30 ASC) as pct_progression,
-      PERCENT_RANK() OVER (PARTITION BY player_type ORDER BY w_interceptions_p30 ASC) as pct_defense,
-      PERCENT_RANK() OVER (PARTITION BY player_type ORDER BY w_recoveries_p30 ASC) as pct_workrate,
+      PERCENT_RANK() OVER (PARTITION BY player_type, game_state ORDER BY w_xg_p30 ASC) as pct_xg,
+      PERCENT_RANK() OVER (PARTITION BY player_type, game_state ORDER BY w_goals_p30 ASC) as pct_goals,
+      PERCENT_RANK() OVER (PARTITION BY player_type, game_state ORDER BY w_shots_p30 ASC) as pct_shots,
+      PERCENT_RANK() OVER (PARTITION BY player_type, game_state ORDER BY w_key_passes_p30 ASC) as pct_creation,
+      PERCENT_RANK() OVER (PARTITION BY player_type, game_state ORDER BY w_progressive_p30 ASC) as pct_progression,
+      PERCENT_RANK() OVER (PARTITION BY player_type, game_state ORDER BY w_interceptions_p30 ASC) as pct_defense,
+      PERCENT_RANK() OVER (PARTITION BY player_type, game_state ORDER BY w_recoveries_p30 ASC) as pct_workrate,
       
       -- Percentiles GK (NULL)
       CAST(NULL as FLOAT64) as pct_saves,
@@ -92,7 +94,7 @@ WITH
 
     -- BLOQUE B: PORTEROS
     SELECT 
-      player_id, player_name, current_team_id, player_type,
+      player_id, player_name, current_team_id, player_type, game_state,
       
       -- Métricas de Campo (NULL)
       NULL, NULL, NULL, NULL, 
@@ -105,8 +107,8 @@ WITH
       NULL, NULL, NULL, NULL, NULL, NULL, NULL,
       
       -- Percentiles Calculados (GK)
-      PERCENT_RANK() OVER (PARTITION BY player_type ORDER BY w_reflex_saves ASC) as pct_saves,
-      PERCENT_RANK() OVER (PARTITION BY player_type ORDER BY w_dist_accuracy ASC) as pct_distribution
+      PERCENT_RANK() OVER (PARTITION BY player_type, game_state ORDER BY w_reflex_saves ASC) as pct_saves,
+      PERCENT_RANK() OVER (PARTITION BY player_type, game_state ORDER BY w_dist_accuracy ASC) as pct_distribution
     FROM gk_weighted
   )
 

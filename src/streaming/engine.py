@@ -1,4 +1,5 @@
 # src/streaming/engine.py
+import sys
 import pandas as pd
 import json
 import time
@@ -6,6 +7,10 @@ import threading
 import os
 from datetime import datetime
 from src.data.redis_client import get_redis_connection
+
+# Forzar UTF-8 en stdout (para que los emojis no rompan en Windows cp1252)
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 
 # Configuración de Canales Redis
 MATCH_ID = "test_match"
@@ -54,7 +59,7 @@ class SimulationEngine:
         self.project_root = os.path.dirname(os.path.dirname(current_dir))
         self.data_dir = os.path.join(self.project_root, "data")
 
-        print(f"📂 Directorio de Datos detectado: {self.data_dir}")
+        print(f"[INFO] Directorio de Datos detectado: {self.data_dir}")
 
     def _log(self, message):
         ts = datetime.now().strftime("%H:%M:%S")
@@ -161,7 +166,7 @@ class SimulationEngine:
                 target_columns = [
                     "id", "index",
                     "timestamp", "period", "minute", "event_type_name", "event_type_id",
-                    "team_name", "player_name", "location_x", "location_y",
+                    "team_id", "team_name", "player_id", "player_name", "location_x", "location_y",
                     "end_location_y", "end_location_x", "end_location_z",
                     "pass_recipient_name", "pass_length", "pass_angle",
                     "pass_height_name", "pass_cross", "pass_cut_back",
@@ -214,7 +219,7 @@ class SimulationEngine:
             error_msg = f"Error Carga: {str(e)}"
             self.status_message = error_msg
             self._log(f"❌ {error_msg}")
-            print(f"❌ ERROR DETALLADO: {e}")
+            print(f"[ERROR] Detalle: {e}")
             self.errors += 1
             return False
 

@@ -272,20 +272,20 @@ class PersistenceWorker:
                 df_enriched = df_enriched.where(pd.notnull(df_enriched), None)
 
                 # Prevenir error: ON CONFLICT DO UPDATE command cannot affect row a second time
-                df_enriched = df_enriched.drop_duplicates(subset=['master_player_id'])
+                df_enriched = df_enriched.drop_duplicates(subset=['master_player_id', 'game_state'])
 
                 temp_table = f"temp_ghost_{int(time.time()*100)}"
                 df_enriched.to_sql(temp_table, con=self.db_engine, if_exists='replace', index=False)
                 
                 columns = '", "'.join(df_enriched.columns)
-                update_set = ', '.join([f'"{c}" = EXCLUDED."{c}"' for c in df_enriched.columns if c != 'master_player_id'])
+                update_set = ', '.join([f'"{c}" = EXCLUDED."{c}"' for c in df_enriched.columns if c not in ['master_player_id', 'game_state']])
                 
                 with self.db_engine.connect() as conn:
                     with conn.begin():
                         upsert_sql = f"""
                             INSERT INTO player_ghost_profile ("{columns}")
                             SELECT "{columns}" FROM {temp_table}
-                            ON CONFLICT (master_player_id) DO UPDATE SET
+                            ON CONFLICT (master_player_id, game_state) DO UPDATE SET
                             {update_set};
                         """
                         conn.execute(text(upsert_sql))
@@ -369,9 +369,112 @@ class PersistenceWorker:
         except Exception as e:
             self._log(f"Error saving event: {e}", "ERROR")
 
+    def compute_live_projection(self):
+        try:
+            with self.db_engine.begin() as conn:
+                # 1. Obtenemos el minuto actual del partido
+                min_row = conn.execute(text("SELECT MAX(minute) as max_m FROM match_events WHERE match_id = :mid"), {"mid": MATCH_ID}).fetchone()
+                current_minute = 1
+                if min_row and min_row.max_m:
+                    current_minute = max(1, min_row.max_m)
+                    
+                # 2. Contamos eventos agrupados por jugador extrapolados al P30
+                query = text("""
+                    WITH player_stats AS (
+                        SELECT
+                            CAST(player_id AS INTEGER) as pid,
+                            COUNT(CASE WHEN event_type_id = 16 THEN 1 END) as shots,
+                            COUNT(CASE WHEN event_type_id IN (30, 2) THEN 1 END) as passes,
+                            COUNT(CASE WHEN event_type_id IN (4, 10, 17, 6) THEN 1 END) as defense,
+                            COUNT(CASE WHEN event_type_id IN (23, 33) THEN 1 END) as saves
+                        FROM match_events
+                        WHERE match_id = :mid AND player_id IS NOT NULL AND player_id != ''
+                        GROUP BY player_id
+                    )
+                    SELECT
+                        ps.pid, ps.shots, ps.passes, ps.defense, ps.saves,
+                        gp.pct_shots, gp.pct_creation, gp.pct_progression,
+                        gp.pct_defense, gp.pct_workrate, gp.pct_saves, gp.pct_distribution,
+                        gp.w_shots_p30, gp.w_key_passes_p30, gp.w_progressive_p30, 
+                        gp.w_interceptions_p30, gp.w_recoveries_p30, gp.w_saves_vol, gp.w_dist_accuracy
+                    FROM player_stats ps
+                    JOIN player_ghost_profile gp ON CAST(ps.pid AS VARCHAR) = gp.master_player_id
+                """)
+                
+                results = conn.execute(query, {"mid": MATCH_ID}).fetchall()
+                if not results: return
+                
+                projections = []
+                for row in results:
+                    r = row._mapping
+                    p30_shots = (r.shots / current_minute) * 30
+                    p30_passes = (r.passes / current_minute) * 30
+                    p30_defense = (r.defense / current_minute) * 30
+                    p30_saves = (r.saves / current_minute) * 30
+                    
+                    e_shots = float(r.w_shots_p30 or 1.0)
+                    e_pass = float((r.w_key_passes_p30 or 1.0) * 5)
+                    e_def = float((r.w_interceptions_p30 or 1.0) + (r.w_recoveries_p30 or 2.0))
+                    e_sav = float(r.w_saves_vol or 1.0)
+
+                    b_sh = float(r.pct_shots or 0.5)
+                    b_cr = float(r.pct_creation or 0.5)
+                    b_pr = float(r.pct_progression or 0.5)
+                    b_de = float(r.pct_defense or 0.5)
+                    b_wo = float(r.pct_workrate or 0.5)
+                    b_sa = float(r.pct_saves or 0.5)
+                    b_di = float(r.pct_distribution or 0.5)
+
+                    proj_pct_shots = min(1.0, b_sh * (p30_shots / max(0.1, e_shots)))
+                    proj_pct_creation = min(1.0, b_cr * (p30_passes / max(1.0, e_pass)))
+                    proj_pct_progression = min(1.0, b_pr * (p30_passes / max(1.0, e_pass * 1.5)))
+                    proj_pct_defense = min(1.0, b_de * (p30_defense / max(1.0, e_def)))
+                    proj_pct_workrate = min(1.0, b_wo * (p30_defense / max(1.0, e_def)))
+                    proj_pct_saves = min(1.0, b_sa * (p30_saves / max(0.1, e_sav)))
+                    proj_pct_distribution = min(1.0, b_di * (p30_passes / max(1.0, 5.0)))
+                    
+                    avg_expected = (b_sh + b_cr + b_pr + b_de + b_wo + b_sa + b_di) / 7.0
+                    avg_projected = (proj_pct_shots + proj_pct_creation + proj_pct_progression + proj_pct_defense + proj_pct_workrate + proj_pct_saves + proj_pct_distribution) / 7.0
+                    
+                    deviation = ((avg_projected - avg_expected) / max(1.0, avg_expected)) * 100.0
+
+                    projections.append({
+                        "mid": MATCH_ID, "pid": int(r.pid), "mins": float(current_minute),
+                        "p_sh": proj_pct_shots, "p_cr": proj_pct_creation, "p_pr": proj_pct_progression,
+                        "p_de": proj_pct_defense, "p_wo": proj_pct_workrate, "p_sa": proj_pct_saves,
+                        "p_di": proj_pct_distribution, "dev": deviation
+                    })
+
+                if projections:
+                    conn.execute(text("""
+                        INSERT INTO player_live_projection (
+                            match_id, player_id, minutes_played, 
+                            proj_pct_shots, proj_pct_creation, proj_pct_progression, 
+                            proj_pct_defense, proj_pct_workrate, proj_pct_saves, 
+                            proj_pct_distribution, deviation
+                        ) VALUES (
+                            :mid, :pid, :mins, :p_sh, :p_cr, :p_pr, :p_de, :p_wo, :p_sa, :p_di, :dev
+                        ) ON CONFLICT (match_id, player_id) DO UPDATE SET
+                            minutes_played = EXCLUDED.minutes_played,
+                            proj_pct_shots = EXCLUDED.proj_pct_shots,
+                            proj_pct_creation = EXCLUDED.proj_pct_creation,
+                            proj_pct_progression = EXCLUDED.proj_pct_progression,
+                            proj_pct_defense = EXCLUDED.proj_pct_defense,
+                            proj_pct_workrate = EXCLUDED.proj_pct_workrate,
+                            proj_pct_saves = EXCLUDED.proj_pct_saves,
+                            proj_pct_distribution = EXCLUDED.proj_pct_distribution,
+                            deviation = EXCLUDED.deviation
+                    """), projections)
+            
+            self._log(f"✅ Proyección en vivo actualizada para {len(projections)} jugadores.", "INFO")
+        except Exception as e:
+            self._log(f"Error calculando proyección: {e}", "ERROR")
+
     def run(self):
         self._log("WORKER ACTIVO - Modo Inspección Superado", "INFO")
         self.pubsub.subscribe(f"match:{MATCH_ID}:events")
+        
+        last_projection_time = time.time()
         
         while self.running:
             # 1. Metadata es prioridad
@@ -379,6 +482,11 @@ class PersistenceWorker:
                 self.save_metadata()
                 time.sleep(1)
                 continue
+
+            # Ejecutar proyección en vivo cada 60s
+            if time.time() - last_projection_time > 60:
+                self.compute_live_projection()
+                last_projection_time = time.time()
 
             # 2. Eventos
             while True:

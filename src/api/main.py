@@ -4,6 +4,10 @@ from src.data.redis_client import get_redis_connection
 import asyncio
 import json
 import math
+import sys
+import os
+import subprocess
+from pathlib import Path
 from src.data.postgres_client import get_db_engine
 from sqlalchemy import text
 
@@ -120,9 +124,15 @@ def get_match_metadata(match_id: str):
 
             # 2. Consulta SQL de Jugadores
             query = text("""
-                SELECT player_id, team_id, name, dorsal, position
-                FROM match_players
-                WHERE match_id = :mid
+                SELECT mp.player_id, mp.team_id, mp.name, mp.dorsal, mp.position,
+                       lp.deviation,
+                       gp.pct_shots, gp.pct_creation, gp.pct_progression,
+                       gp.pct_defense, gp.pct_workrate, gp.pct_saves, gp.pct_distribution,
+                       gp.player_type as ghost_player_type
+                FROM match_players mp
+                LEFT JOIN player_live_projection lp ON mp.player_id = lp.player_id AND lp.match_id = :mid
+                LEFT JOIN player_ghost_profile gp ON mp.player_id = gp.tracking_player_id AND gp.game_state = 'Drawing'
+                WHERE mp.match_id = :mid
             """)
             result = conn.execute(query, {"mid": match_id}).fetchall()
 
@@ -130,15 +140,43 @@ def get_match_metadata(match_id: str):
             if not result:
                 return {"error": "Alineación no encontrada en Base de Datos. Verifique la carga inicial."}
 
+            import json
+            import os
+            
+            # Recuperar groups desde ids_tracking.json
+            role_map = {}
+            ids_path = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'ids_tracking.json')
+            try:
+                if os.path.exists(ids_path):
+                    with open(ids_path, 'r', encoding='utf-8') as f:
+                        tracking_data = json.load(f)
+                        for p in tracking_data.get('players', []):
+                            pid = str(p.get('team_player_id'))
+                            pgroup = p.get('player_role', {}).get('position_group', 'Unknown')
+                            role_map[pid] = pgroup
+            except Exception as e:
+                print(f"Error parseando ids_tracking para position_group: {e}")
+
             # Serialización
             players_list = []
             for row in result:
+                # Calcular ghost_score promedio desde percentiles de BigQuery
+                bq_pcts = []
+                for col_name in ['pct_shots', 'pct_creation', 'pct_progression', 'pct_defense', 'pct_workrate', 'pct_saves', 'pct_distribution']:
+                    val = getattr(row, col_name, None)
+                    if val is not None:
+                        bq_pcts.append(float(val))
+                ghost_score = round(sum(bq_pcts) / len(bq_pcts) * 100, 1) if bq_pcts else None
+
                 players_list.append({
                     "player_id": row.player_id,
                     "team_id": row.team_id,
                     "short_name": row.name,
                     "number": row.dorsal,
-                    "role": row.position
+                    "role": row.position,
+                    "position_group": role_map.get(str(row.player_id), "Unknown"),
+                    "deviation": float(row.deviation) if row.deviation is not None else 0.0,
+                    "ghost_score": ghost_score
                 })
                 
             match_data = None
@@ -151,6 +189,45 @@ def get_match_metadata(match_id: str):
     except Exception as e:
         print(f"❌ Error crítico leyendo DB: {e}")
         return {"error": "Error de conexión con Base de Datos"}
+
+
+@app.get("/player/{player_id}/ghost_profile")
+def get_player_ghost_profile(player_id: str, game_state: str = Query('Drawing')):
+    """
+    Endpoint para alimentar el Radar Chart del frontend según el estado del partido
+    (Winning, Drawing, Losing).
+    """
+    try:
+        engine = get_db_engine()
+        with engine.connect() as conn:
+            # Join con match_players y profile en vivo
+            query = text("""
+                SELECT p.*,
+                       lp.proj_pct_shots, lp.proj_pct_creation, lp.proj_pct_progression,
+                       lp.proj_pct_defense, lp.proj_pct_workrate, lp.proj_pct_saves, lp.proj_pct_distribution,
+                       lp.deviation, lp.minutes_played
+                FROM player_ghost_profile p
+                JOIN match_players m ON m.name = p.player_name OR CAST(m.player_id AS VARCHAR) = p.tracking_player_id::VARCHAR
+                LEFT JOIN player_live_projection lp ON CAST(m.player_id AS VARCHAR) = CAST(lp.player_id AS VARCHAR)
+                WHERE CAST(m.player_id AS VARCHAR) = :pid
+                  AND p.game_state = :state
+                LIMIT 1
+            """)
+            result = conn.execute(query, {
+                "pid": player_id,
+                "state": game_state
+            }).fetchone()
+
+            if not result:
+                # Fallback genérico si no encontró para ese estado o aún no cargó
+                return {"status": "processing", "message": f"Data not ready for state: {game_state}"}
+
+            return clean_nans(dict(result._mapping))
+
+    except Exception as e:
+        print(f"❌ Error leyendo Ghost Profile: {e}")
+        return {"error": "Error de BD obteniendo Ghost Profile"}
+
 
 
 @app.websocket("/ws/match/{match_id}")
@@ -261,6 +338,97 @@ def get_tracking_history(
     except Exception as e:
         print(f"❌ Error fetching tracking history: {e}")
         return {"error": "Error recuperando histórico de tracking", "details": str(e)}
+
+
+# ==========================================
+# 🛠️ SERVICE MANAGER (Dev Tools)
+# ==========================================
+
+# Registro de procesos en memoria (se reinicia con la API)
+_SERVICES: dict = {}
+
+# Directorio raíz del proyecto (dos niveles arriba de src/api/)
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+VENV_PYTHON = PROJECT_ROOT / "venvfutbol" / "Scripts" / "python.exe"
+VENV_STREAMLIT = PROJECT_ROOT / "venvfutbol" / "Scripts" / "streamlit.exe"
+
+SERVICE_COMMANDS = {
+    "worker": [str(VENV_PYTHON), str(PROJECT_ROOT / "src" / "data" / "worker_persist.py")],
+    "dashboard": [str(VENV_STREAMLIT), "run", str(PROJECT_ROOT / "src" / "streaming" / "dashboard.py"), "--server.headless", "true"],
+    # La propia API no puede iniciarse a sí misma; se marca siempre como running
+    "api": None,
+}
+
+
+@app.get("/admin/services/status")
+def get_services_status():
+    """Devuelve el estado (running/stopped) de cada servicio gestionado."""
+    status = {}
+    for svc_id, proc in _SERVICES.items():
+        if proc is None:
+            status[svc_id] = False
+        else:
+            status[svc_id] = proc.poll() is None  # None = sigue en marcha
+
+    # La API siempre está corriendo (somos nosotros)
+    status["api"] = True
+    return status
+
+
+@app.post("/admin/services/start/{service_id}")
+def start_service(service_id: str):
+    """Arranca un servicio en background."""
+    if service_id == "api":
+        return {"ok": False, "message": "La API no puede reiniciarse a sí misma"}
+
+    if service_id not in SERVICE_COMMANDS:
+        return {"ok": False, "message": f"Servicio desconocido: {service_id}"}
+
+    # Si ya está corriendo, no lanzamos otro
+    existing = _SERVICES.get(service_id)
+    if existing and existing.poll() is None:
+        return {"ok": True, "message": f"{service_id} ya está en marcha"}
+
+    cmd = SERVICE_COMMANDS[service_id]
+    try:
+        env = os.environ.copy()
+        env['PYTHONUTF8'] = '1'
+        env['PYTHONIOENCODING'] = 'utf-8'
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(PROJECT_ROOT),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=env,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
+        )
+        _SERVICES[service_id] = proc
+        print(f"[OK] Servicio iniciado: {service_id} (PID {proc.pid})")
+        return {"ok": True, "pid": proc.pid}
+    except Exception as e:
+        print(f"[ERROR] Al iniciar {service_id}: {e}")
+        return {"ok": False, "message": str(e)}
+
+
+@app.post("/admin/services/stop/{service_id}")
+def stop_service(service_id: str):
+    """Detiene un servicio gestionado."""
+    if service_id == "api":
+        return {"ok": False, "message": "No puedes parar la API desde aquí"}
+
+    proc = _SERVICES.get(service_id)
+    if not proc or proc.poll() is not None:
+        return {"ok": True, "message": f"{service_id} ya estaba detenido"}
+
+    try:
+        proc.terminate()
+        proc.wait(timeout=5)
+    except Exception:
+        proc.kill()
+
+    _SERVICES[service_id] = None
+    print(f"[STOP] Servicio detenido: {service_id}")
+    return {"ok": True}
 
 
 @app.get("/match/{match_id}/events/history")

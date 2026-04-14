@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { TrendingUp, TrendingDown, Minus, Users, Shield } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Users, Shield, Database, Server } from 'lucide-react';
 
 const GhostTicker = ({ players, matchInfo, onPlayerClick }) => {
   const [filter, setFilter] = useState('all'); // 'all', 'home', 'away'
@@ -22,14 +22,14 @@ const GhostTicker = ({ players, matchInfo, onPlayerClick }) => {
   // 2. Lista infinita
   // Duplicamos x10 para asegurar que cubra pantallas grandes
   const marqueeList = useMemo(() => {
-    const base = filteredPlayers.length > 0 ? filteredPlayers : [{ id: 'loading', name: 'ESPERANDO DATOS...', number: '--', deviation: 0 }];
+    const base = filteredPlayers.length > 0 ? filteredPlayers : [{ id: 'loading', name: 'ESPERANDO DATOS...', number: '--', deviation: 0, ghost_score: null }];
     return [...base, ...base, ...base, ...base, ...base, ...base, ...base, ...base];
   }, [filteredPlayers]);
 
   const getTrendIcon = (val) => {
-    if (val > 0.5) return <TrendingUp size={14} className="text-success" />;
-    if (val < -0.5) return <TrendingDown size={14} className="text-danger" />;
-    return <Minus size={14} className="text-zinc-500" />;
+    if (val > 0.5) return <TrendingUp size={12} className="text-red-400" />;
+    if (val < -0.5) return <TrendingDown size={12} className="text-red-400" />;
+    return <Minus size={12} className="text-zinc-600" />;
   };
 
   const homeAcronym = matchInfo ? matchInfo.home_team_acronym : 'HOME';
@@ -37,7 +37,7 @@ const GhostTicker = ({ players, matchInfo, onPlayerClick }) => {
 
   return (
     // CAMBIO: Opacidad bajada a /70 para que se intuya el fondo del estadio
-    <div className="w-full h-12 bg-zinc-950/70 border-y border-white/5 flex items-center overflow-hidden relative backdrop-blur-md z-30 shadow-lg">
+    <div className="w-full h-14 bg-zinc-950/70 border-y border-white/5 flex items-center overflow-hidden relative backdrop-blur-md z-30 shadow-lg">
 
       {/* Definición de Animación CSS en línea para no depender de index.css externo */}
       <style>{`
@@ -79,26 +79,29 @@ const GhostTicker = ({ players, matchInfo, onPlayerClick }) => {
         onMouseLeave={() => setIsPaused(false)}
       >
         <div
-          className="flex gap-12 whitespace-nowrap"
+          className="flex gap-10 whitespace-nowrap"
           style={{
             animationName: 'ticker-scroll',
             animationDuration: `${Math.max(60, marqueeList.length * 8)}s`, // Velocidad dinámica
             animationTimingFunction: 'linear',
             animationIterationCount: 'infinite',
-            animationPlayState: isPaused ? 'paused' : 'running', // <--- PAUSA SUAVE AQUÍ
+            animationPlayState: isPaused ? 'paused' : 'running', // PAUSA SUAVE
             willChange: 'transform'
           }}
         >
           {marqueeList.map((player, idx) => {
-            const deviation = player.deviation !== undefined ? player.deviation : 0;
-            const isPositive = deviation > 0;
+            const deviationNum = parseFloat(player.deviation) || 0;
+            const ghostScore = player.ghost_score;
+            const hasGhostData = ghostScore != null;
+            const isPlaceholder = player.id === 'loading';
 
             return (
               <div
                 key={`${player.id}-${idx}`}
                 onClick={() => onPlayerClick && onPlayerClick(player)}
-                className="flex items-center gap-3 group cursor-pointer select-none hover:opacity-100 opacity-80 transition-opacity"
+                className="flex items-center gap-2.5 group cursor-pointer select-none hover:opacity-100 opacity-80 transition-opacity"
               >
+                {/* Nombre y dorsal */}
                 <div className="flex flex-col items-end leading-none">
                   <span className="text-[9px] font-mono text-zinc-600">#{player.number || '00'}</span>
                   <span className="text-xs font-bold text-zinc-400 group-hover:text-white transition-colors">
@@ -106,14 +109,36 @@ const GhostTicker = ({ players, matchInfo, onPlayerClick }) => {
                   </span>
                 </div>
 
-                <div className={`flex items-center gap-1.5 px-2 py-1 rounded bg-black/40 border border-white/5 group-hover:border-white/20 transition-colors`}>
-                  {getTrendIcon(deviation)}
-                  <span className={`text-[10px] font-mono font-bold ${isPositive ? 'text-success' : 'text-danger'}`}>
-                    {deviation > 0 ? '+' : ''}{deviation}%
+                {/* BigQuery Ghost Score — Azul Claro */}
+                <div className={`flex items-center gap-1 px-2 py-0.5 rounded-md border transition-colors ${
+                  hasGhostData 
+                    ? 'bg-sky-500/10 border-sky-400/20 group-hover:border-sky-400/40' 
+                    : 'bg-black/20 border-white/5'
+                }`}>
+                  <Database size={9} className="text-sky-400/70" />
+                  <span className={`text-[10px] font-mono font-bold ${
+                    hasGhostData ? 'text-sky-300' : 'text-zinc-600'
+                  }`}>
+                    {hasGhostData ? ghostScore.toFixed(0) : '—'}
                   </span>
                 </div>
 
-                <div className="w-1 h-1 rounded-full bg-zinc-800 ml-6 opacity-50" />
+                {/* PostgreSQL Live Deviation — Rojo */}
+                <div className={`flex items-center gap-1 px-2 py-0.5 rounded-md border transition-colors ${
+                  !isPlaceholder
+                    ? 'bg-red-500/10 border-red-400/20 group-hover:border-red-400/40' 
+                    : 'bg-black/20 border-white/5'
+                }`}>
+                  {!isPlaceholder ? getTrendIcon(deviationNum) : <Server size={9} className="text-zinc-600" />}
+                  <span className={`text-[10px] font-mono font-bold ${
+                    !isPlaceholder ? 'text-red-400' : 'text-zinc-600'
+                  }`}>
+                    {!isPlaceholder ? `${deviationNum > 0 ? '+' : ''}${player.deviation}%` : '—'}
+                  </span>
+                </div>
+
+                {/* Separador visual */}
+                <div className="w-1 h-1 rounded-full bg-zinc-800 ml-4 opacity-50" />
               </div>
             )
           })}

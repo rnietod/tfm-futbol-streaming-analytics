@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Chip, Slider, Button } from "@nextui-org/react";
 import {
-  Wifi, WifiOff, Activity, Play, Pause, SkipBack,
+  Activity, Play, Pause, SkipBack,
   FastForward, Radio, BrainCircuit, TrendingUp, Users, LayoutGrid
 } from 'lucide-react';
 import FootballPitch from './components/FootballPitch';
@@ -9,6 +9,7 @@ import GhostTicker from './components/GhostTicker';
 import DynamicBackground from './components/DynamicBackground';
 import PlayerGlassCard from './components/PlayerGlassCard';
 import TactixLogo from './components/TactixLogo';
+import ServiceControlPanel from './components/ServiceControlPanel';
 import { useMatchHistory } from './hooks/useMatchHistory';
 
 // --- UTILIDADES ---
@@ -362,7 +363,9 @@ function App() {
             number: p.number,
             name: p.short_name,
             team_id: p.team_id,
-            team_name: getTeamName(p.team_id)
+            team_name: getTeamName(p.team_id),
+            deviation: p.deviation || 0,
+            ghost_score: p.ghost_score ?? null
           });
           setPlayerMap(map);
         })
@@ -381,7 +384,8 @@ function App() {
       number: p.number,
       team_id: p.team_id,
       team_name: p.team_name,
-      deviation: (Math.random() * 5 - 2).toFixed(1) // Placeholder dinámico
+      deviation: (p.deviation || 0).toFixed(1),
+      ghost_score: p.ghost_score
     }));
   }, [playerMap]);
 
@@ -429,10 +433,7 @@ function App() {
         </div>
         <div className="flex items-center gap-3">
           {isLoadingHistory && <Chip color="warning" variant="dot" size="sm" className="bg-transparent border-none text-warning">BUFFERING</Chip>}
-          <div className={`flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 border ${status === 'ONLINE' ? 'border-success/20' : 'border-danger/20'}`}>
-            {status === 'ONLINE' ? <Wifi size={12} className="text-success" /> : <WifiOff size={12} className="text-danger" />}
-            <span className={`font-mono text-[10px] font-bold ${status === 'ONLINE' ? 'text-success' : 'text-danger'}`}>{status}</span>
-          </div>
+          <ServiceControlPanel wsStatus={status} />
         </div>
       </header>
 
@@ -508,6 +509,9 @@ function App() {
           <div className="z-10 animate-in zoom-in-95 duration-300 relative">
             <PlayerGlassCard
               player={selectedPlayer}
+              matchScore={matchScore}
+              matchInfo={matchInfo}
+              isTracked={displayData?.points ? displayData.points.some(p => String(p.player_id) === String(selectedPlayer.player_id || selectedPlayer.id)) : true}
               onClose={() => setSelectedPlayer(null)}
             />
           </div>
