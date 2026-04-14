@@ -14,14 +14,17 @@ def init_tables():
     DROP TABLE IF EXISTS matches CASCADE;
     DROP TABLE IF EXISTS player_season_profile CASCADE;
     DROP TABLE IF EXISTS player_ghost_profile CASCADE;
+    DROP TABLE IF EXISTS player_live_projection CASCADE;
 
     -- 1. PARTIDOS (Metadata)
     CREATE TABLE IF NOT EXISTS matches (
         match_id VARCHAR(50) PRIMARY KEY,
         home_team_id INTEGER,
         home_team_name VARCHAR(100),
+        home_team_acronym VARCHAR(10),
         away_team_id INTEGER,
         away_team_name VARCHAR(100),
+        away_team_acronym VARCHAR(10),
         match_date TIMESTAMP,
         stadium VARCHAR(100),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -139,7 +142,8 @@ def init_tables():
 
     -- 6. GHOST PROFILE (BigQuery Benchmarking Cache)
     CREATE TABLE IF NOT EXISTS player_ghost_profile (
-        master_player_id VARCHAR(50) PRIMARY KEY,
+        master_player_id VARCHAR(50),
+        game_state VARCHAR(50),
         tracking_player_id INTEGER,
         opta_player_id INTEGER,
         player_name VARCHAR(100),
@@ -166,7 +170,24 @@ def init_tables():
         pct_workrate FLOAT,
         pct_saves FLOAT,
         pct_distribution FLOAT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (master_player_id, game_state)
+    );
+    -- 7. VISIÓN EN VIVO (PostgreSQL Projection)
+    CREATE TABLE IF NOT EXISTS player_live_projection (
+        match_id VARCHAR(50),
+        player_id INTEGER,
+        minutes_played FLOAT,
+        proj_pct_shots FLOAT,
+        proj_pct_creation FLOAT,
+        proj_pct_progression FLOAT,
+        proj_pct_defense FLOAT,
+        proj_pct_workrate FLOAT,
+        proj_pct_saves FLOAT,
+        proj_pct_distribution FLOAT,
+        deviation FLOAT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (match_id, player_id)
     );
     """
     
