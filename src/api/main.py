@@ -115,7 +115,7 @@ def get_match_metadata(match_id: str):
         with engine.connect() as conn:
             # 1. Consulta SQL de Match Info
             match_query = text("""
-                SELECT home_team_id, home_team_name, home_team_acronym, 
+                SELECT home_team_id, home_team_name, home_team_acronym,
                        away_team_id, away_team_name, away_team_acronym
                 FROM matches
                 WHERE match_id = :mid
@@ -142,7 +142,7 @@ def get_match_metadata(match_id: str):
 
             import json
             import os
-            
+
             # Recuperar groups desde ids_tracking.json
             role_map = {}
             ids_path = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'ids_tracking.json')
@@ -162,7 +162,11 @@ def get_match_metadata(match_id: str):
             for row in result:
                 # Calcular ghost_score promedio desde percentiles de BigQuery
                 bq_pcts = []
-                for col_name in ['pct_shots', 'pct_creation', 'pct_progression', 'pct_defense', 'pct_workrate', 'pct_saves', 'pct_distribution']:
+                pct_cols = [
+                    'pct_shots', 'pct_creation', 'pct_progression',
+                    'pct_defense', 'pct_workrate', 'pct_saves', 'pct_distribution'
+                ]
+                for col_name in pct_cols:
                     val = getattr(row, col_name, None)
                     if val is not None:
                         bq_pcts.append(float(val))
@@ -178,7 +182,7 @@ def get_match_metadata(match_id: str):
                     "deviation": float(row.deviation) if row.deviation is not None else 0.0,
                     "ghost_score": ghost_score
                 })
-                
+
             match_data = None
             if match_result:
                 match_data = dict(match_result._mapping)
@@ -207,7 +211,9 @@ def get_player_ghost_profile(player_id: str, game_state: str = Query('Drawing'))
                        lp.proj_pct_defense, lp.proj_pct_workrate, lp.proj_pct_saves, lp.proj_pct_distribution,
                        lp.deviation, lp.minutes_played
                 FROM player_ghost_profile p
-                JOIN match_players m ON m.name = p.player_name OR CAST(m.player_id AS VARCHAR) = p.tracking_player_id::VARCHAR
+                JOIN match_players m
+                    ON m.name = p.player_name
+                    OR CAST(m.player_id AS VARCHAR) = p.tracking_player_id::VARCHAR
                 LEFT JOIN player_live_projection lp ON CAST(m.player_id AS VARCHAR) = CAST(lp.player_id AS VARCHAR)
                 WHERE CAST(m.player_id AS VARCHAR) = :pid
                   AND p.game_state = :state
@@ -227,7 +233,6 @@ def get_player_ghost_profile(player_id: str, game_state: str = Query('Drawing'))
     except Exception as e:
         print(f"❌ Error leyendo Ghost Profile: {e}")
         return {"error": "Error de BD obteniendo Ghost Profile"}
-
 
 
 @app.websocket("/ws/match/{match_id}")
@@ -354,7 +359,11 @@ VENV_STREAMLIT = PROJECT_ROOT / "venvfutbol" / "Scripts" / "streamlit.exe"
 
 SERVICE_COMMANDS = {
     "worker": [str(VENV_PYTHON), str(PROJECT_ROOT / "src" / "data" / "worker_persist.py")],
-    "dashboard": [str(VENV_STREAMLIT), "run", str(PROJECT_ROOT / "src" / "streaming" / "dashboard.py"), "--server.headless", "true"],
+    "dashboard": [
+        str(VENV_STREAMLIT), "run",
+        str(PROJECT_ROOT / "src" / "streaming" / "dashboard.py"),
+        "--server.headless", "true"
+    ],
     # La propia API no puede iniciarse a sí misma; se marca siempre como running
     "api": None,
 }

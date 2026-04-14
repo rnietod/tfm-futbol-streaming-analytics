@@ -111,12 +111,12 @@ class SimulationEngine:
                 clean_metadata = {
                     "home_team": {
                         "id": raw_json.get("home_team", {}).get("id"),                 # $.home_team.id
-                        "short_name": raw_json.get("home_team", {}).get("short_name"), # $.home_team.short_name
+                        "short_name": raw_json.get("home_team", {}).get("short_name"),  # $.home_team.short_name
                         "acronym": raw_json.get("home_team", {}).get("acronym")        # $.home_team.acronym
                     },
                     "away_team": {
                         "id": raw_json.get("away_team", {}).get("id"),                 # $.away_team.id
-                        "short_name": raw_json.get("away_team", {}).get("short_name"), # $.away_team.short_name
+                        "short_name": raw_json.get("away_team", {}).get("short_name"),  # $.away_team.short_name
                         "acronym": raw_json.get("away_team", {}).get("acronym")        # $.away_team.acronym
                     },
                     "players": []
