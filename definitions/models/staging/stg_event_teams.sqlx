@@ -1,0 +1,24 @@
+config {
+  type: "view",
+  schema: "staging_football",
+  description: "Dimensión de equipos (ID y Nombres) extraída del payload JSON raw. Granularidad: Partido-Equipo.",
+  tags: ["staging"]
+}
+
+with source as (
+  select
+    -- Metadatos de cruce
+    json_value(raw_events.payload.matchInfo.id) as match_id,
+    
+    -- Extracción del objeto contestant (Equipos)
+    json_value(contestant, '$.id') as team_id,
+    json_value(contestant, '$.name') as team_name,
+    json_value(contestant, '$.shortName') as team_short_name,
+    json_value(contestant, '$.officialName') as team_official_name
+    
+  from
+    `tfm-master-futbol.staging_football.raw_events_native` as raw_events,
+    unnest(json_query_array(raw_events.payload.matchInfo.contestant)) as contestant
+)
+
+select distinct * from source
