@@ -2,13 +2,14 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Chip, Slider, Button } from "@nextui-org/react";
 import { 
   Wifi, WifiOff, Activity, Play, Pause, SkipBack, 
-  FastForward, Radio, BrainCircuit, TrendingUp, Users, LayoutGrid
+  FastForward, Radio, BrainCircuit, TrendingUp, Users, LayoutGrid, BarChart3
 } from 'lucide-react';
 import FootballPitch from './components/FootballPitch';
 import GhostTicker from './components/GhostTicker';
 import DynamicBackground from './components/DynamicBackground';
 import PlayerGlassCard from './components/PlayerGlassCard';
 import TactixLogo from './components/TactixLogo';
+import MatchStatsTab from './components/matchstats/MatchStatsTab';
 import { useMatchHistory } from './hooks/useMatchHistory';
 
 // --- UTILIDADES ---
@@ -218,6 +219,7 @@ const PlaybackControls = ({ currentTime, isLive, isPlaying, currentFrame, maxFra
 
 // --- APP PRINCIPAL ---
 function App() {
+  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'matchstats' | 'vision'
   const [isLive, setIsLive] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [sliderValue, setSliderValue] = useState(0); 
@@ -379,11 +381,35 @@ return (
               TACTIX <span className="text-primary font-mono text-xs align-top">LIVE</span>
             </span>
           </div>
-          <div className="flex gap-2">
-             <button className="px-4 py-1.5 rounded-full text-[10px] font-bold tracking-wide bg-white/5 text-white border border-white/5 hover:bg-white/10 transition-colors flex items-center gap-2">
+          <div className="flex gap-1 bg-zinc-900/60 rounded-full p-0.5 border border-white/5">
+             <button
+                onClick={() => setActiveTab('dashboard')}
+                className={`px-4 py-1.5 rounded-full text-[10px] font-bold tracking-wide transition-all duration-300 flex items-center gap-2 ${
+                  activeTab === 'dashboard'
+                    ? 'bg-white/10 text-white border border-white/10 shadow-lg'
+                    : 'text-zinc-500 hover:text-zinc-300 border border-transparent'
+                }`}
+             >
                 <LayoutGrid size={12} /> DASHBOARD
              </button>
-             <button className="px-4 py-1.5 rounded-full text-[10px] font-bold tracking-wide text-zinc-400 hover:text-white transition-colors flex items-center gap-2">
+             <button
+                onClick={() => setActiveTab('matchstats')}
+                className={`px-4 py-1.5 rounded-full text-[10px] font-bold tracking-wide transition-all duration-300 flex items-center gap-2 ${
+                  activeTab === 'matchstats'
+                    ? 'bg-primary/20 text-primary border border-primary/20 shadow-[0_0_15px_rgba(0,111,238,0.15)]'
+                    : 'text-zinc-500 hover:text-zinc-300 border border-transparent'
+                }`}
+             >
+                <BarChart3 size={12} /> MATCH STATS
+             </button>
+             <button
+                onClick={() => setActiveTab('vision')}
+                className={`px-4 py-1.5 rounded-full text-[10px] font-bold tracking-wide transition-all duration-300 flex items-center gap-2 ${
+                  activeTab === 'vision'
+                    ? 'bg-white/10 text-white border border-white/10 shadow-lg'
+                    : 'text-zinc-500 hover:text-zinc-300 border border-transparent'
+                }`}
+             >
                 <BrainCircuit size={12} /> GEMINI VISION
              </button>
           </div>
@@ -396,62 +422,82 @@ return (
           </div>
         </header>
 
-        {/* GHOST TICKER */}
-        <GhostTicker 
-            players={tickerPlayers} 
-            onPlayerClick={handleSelectPlayer} 
-        />
+        {/* TAB: DASHBOARD */}
+        {activeTab === 'dashboard' && (
+          <>
+            {/* GHOST TICKER */}
+            <GhostTicker 
+                players={tickerPlayers} 
+                onPlayerClick={handleSelectPlayer} 
+            />
 
-        {/* MAIN LAYOUT */}
-        <main className="flex-1 min-h-0 grid grid-cols-12 gap-0 relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-900/10 via-zinc-950/30 to-zinc-950/50">
-            {/* IZQUIERDA: FEED */}
-            <aside className="col-span-3 lg:col-span-2 min-h-0 flex flex-col z-20 shadow-[5px_0_30px_rgba(0,0,0,0.3)]">
-                <EventFeed events={eventsList} />
-            </aside>
+            {/* MAIN LAYOUT */}
+            <main className="flex-1 min-h-0 grid grid-cols-12 gap-0 relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-900/10 via-zinc-950/30 to-zinc-950/50">
+                {/* IZQUIERDA: FEED */}
+                <aside className="col-span-3 lg:col-span-2 min-h-0 flex flex-col z-20 shadow-[5px_0_30px_rgba(0,0,0,0.3)]">
+                    <EventFeed events={eventsList} />
+                </aside>
 
-            {/* DERECHA: CAMPO + CONTROLES */}
-            <section className="col-span-9 lg:col-span-10 relative flex flex-col p-4 overflow-hidden">
-                
-                {/* Scoreboard */}
-                <div className="absolute top-4 left-0 right-0 z-30 flex justify-center w-full pointer-events-none">
-                    <div className="bg-black/40 backdrop-blur-md px-8 py-2 rounded-2xl border border-white/5 shadow-2xl flex items-center gap-8">
-                        <span className="text-sm font-bold text-zinc-400 tracking-wider">LIV</span>
-                        <div className="text-3xl font-mono font-bold text-white tracking-widest drop-shadow-lg">
-                        2<span className="text-zinc-600 mx-3 text-2xl">:</span>1
+                {/* DERECHA: CAMPO + CONTROLES */}
+                <section className="col-span-9 lg:col-span-10 relative flex flex-col p-4 overflow-hidden">
+                    
+                    {/* Scoreboard */}
+                    <div className="absolute top-4 left-0 right-0 z-30 flex justify-center w-full pointer-events-none">
+                        <div className="bg-black/40 backdrop-blur-md px-8 py-2 rounded-2xl border border-white/5 shadow-2xl flex items-center gap-8">
+                            <span className="text-sm font-bold text-zinc-400 tracking-wider">LIV</span>
+                            <div className="text-3xl font-mono font-bold text-white tracking-widest drop-shadow-lg">
+                            2<span className="text-zinc-600 mx-3 text-2xl">:</span>1
+                            </div>
+                            <span className="text-sm font-bold text-zinc-400 tracking-wider">MCI</span>
                         </div>
-                        <span className="text-sm font-bold text-zinc-400 tracking-wider">MCI</span>
                     </div>
-                </div>
 
-                {/* Área del Campo */}
-                <div className="flex-1 flex items-center justify-center relative min-h-0">
-                     <div className="scale-[0.8] lg:scale-[0.9] xl:scale-100 transition-transform duration-500">
-                        <FootballPitch 
-                            matchState={displayData} 
-                            latestEvent={latestEvent}
-                            playerMap={playerMap} 
-                            width={1150}   
-                            height={720}
-                            onPlayerClick={handleSelectPlayer}
+                    {/* Área del Campo */}
+                    <div className="flex-1 flex items-center justify-center relative min-h-0">
+                         <div className="scale-[0.8] lg:scale-[0.9] xl:scale-100 transition-transform duration-500">
+                            <FootballPitch 
+                                matchState={displayData} 
+                                latestEvent={latestEvent}
+                                playerMap={playerMap} 
+                                width={1150}   
+                                height={720}
+                                onPlayerClick={handleSelectPlayer}
+                            />
+                         </div>
+                    </div>
+
+                    {/* FOOTER CONTROLS */}
+                    <div className="w-full relative z-20 pb-2">
+                        <PlaybackControls 
+                            currentTime={formatTime(displayData?.timestamp)} 
+                            isLive={isLive}
+                            isPlaying={isPlaying} 
+                            currentFrame={sliderValue} 
+                            maxFrame={maxFrame} 
+                            onSeek={handleSeek}
+                            onToggleLive={handleGoLive}
+                            onTogglePlay={handleTogglePlay}
                         />
-                     </div>
-                </div>
+                    </div>
+                </section>
+            </main>
+          </>
+        )}
 
-                {/* FOOTER CONTROLS (Ahora vive dentro de esta columna) */}
-                <div className="w-full relative z-20 pb-2">
-                    <PlaybackControls 
-                        currentTime={formatTime(displayData?.timestamp)} 
-                        isLive={isLive}
-                        isPlaying={isPlaying} 
-                        currentFrame={sliderValue} 
-                        maxFrame={maxFrame} 
-                        onSeek={handleSeek}
-                        onToggleLive={handleGoLive}
-                        onTogglePlay={handleTogglePlay}
-                    />
-                </div>
-            </section>
-        </main>
+        {/* TAB: MATCH STATS HUB */}
+        {activeTab === 'matchstats' && (
+          <MatchStatsTab />
+        )}
+
+        {/* TAB: GEMINI VISION (placeholder) */}
+        {activeTab === 'vision' && (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center space-y-3">
+              <BrainCircuit size={48} className="text-zinc-700 mx-auto" />
+              <p className="text-zinc-600 text-sm font-medium">Gemini Vision — Coming Soon</p>
+            </div>
+          </div>
+        )}
 
         {/* LAYER 2: MODAL OVERLAY (Player Card) */}
         {selectedPlayer && (
