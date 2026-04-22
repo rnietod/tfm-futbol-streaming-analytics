@@ -229,6 +229,9 @@ function App() {
   const [latestEvent, setLatestEvent] = useState(null);
   const [status, setStatus] = useState("OFFLINE");
   const [playerMap, setPlayerMap] = useState({});
+  const [homeTeam, setHomeTeam] = useState('');
+  const [awayTeam, setAwayTeam] = useState('');
+  const [teamsMap, setTeamsMap] = useState({});
   const ws = useRef(null);
   const lastEventIndex = useRef(-1);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
@@ -347,6 +350,10 @@ function App() {
             const map = {};
             players.forEach(p => map[String(p.player_id)] = { number: p.number, name: p.short_name, team_id: p.team_id });
             setPlayerMap(map);
+            // Extract team names from API response
+            if (data.homeName) setHomeTeam(data.homeName);
+            if (data.awayName) setAwayTeam(data.awayName);
+            if (data.teams) setTeamsMap(data.teams);
           })
         .catch(e => console.warn("Error meta:",e));
     };
@@ -354,6 +361,27 @@ function App() {
     const intervalId = setInterval(fetchMetadata, 60000);
     return () => clearInterval(intervalId);
   }, []);
+
+  // Compute live score from events (goal = event_type_id 16 + outcome_id 97)
+  const { homeGoals, awayGoals } = useMemo(() => {
+    let home = 0, away = 0;
+    if (!homeTeam && !awayTeam) return { homeGoals: 0, awayGoals: 0 };
+
+    eventsList.forEach(evt => {
+      if (evt.event_type_id === 16 && evt.outcome_id === 97) {
+        const evtTeam = evt.team_name || '';
+        const hl = homeTeam.toLowerCase();
+        const al = awayTeam.toLowerCase();
+        const el = evtTeam.toLowerCase();
+        if (hl && (el.includes(hl) || hl.includes(el) || el.startsWith(hl.substring(0, 3)))) {
+          home++;
+        } else if (al && (el.includes(al) || al.includes(el) || el.startsWith(al.substring(0, 3)))) {
+          away++;
+        }
+      }
+    });
+    return { homeGoals: home, awayGoals: away };
+  }, [eventsList, homeTeam, awayTeam]);
 
   // Lista de Jugadores para el Ticker (Derivada del mapa)
   const tickerPlayers = useMemo(() => {
@@ -444,11 +472,11 @@ return (
                     {/* Scoreboard */}
                     <div className="absolute top-4 left-0 right-0 z-30 flex justify-center w-full pointer-events-none">
                         <div className="bg-black/40 backdrop-blur-md px-8 py-2 rounded-2xl border border-white/5 shadow-2xl flex items-center gap-8">
-                            <span className="text-sm font-bold text-zinc-400 tracking-wider">LIV</span>
+                            <span className="text-sm font-bold text-zinc-400 tracking-wider">{homeTeam ? homeTeam.substring(0, 3).toUpperCase() : 'HOME'}</span>
                             <div className="text-3xl font-mono font-bold text-white tracking-widest drop-shadow-lg">
-                            2<span className="text-zinc-600 mx-3 text-2xl">:</span>1
+                            {homeGoals}<span className="text-zinc-600 mx-3 text-2xl">:</span>{awayGoals}
                             </div>
-                            <span className="text-sm font-bold text-zinc-400 tracking-wider">MCI</span>
+                            <span className="text-sm font-bold text-zinc-400 tracking-wider">{awayTeam ? awayTeam.substring(0, 3).toUpperCase() : 'AWAY'}</span>
                         </div>
                     </div>
 

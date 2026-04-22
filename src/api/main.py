@@ -126,8 +126,12 @@ def get_match_metadata(match_id: str):
     try:
         engine = get_db_engine()
         with engine.connect() as conn:
+            # 0. Info del partido (nombres de equipo)
+            match_row = conn.execute(text(
+                "SELECT home_team_name, away_team_name FROM matches WHERE match_id = :mid"
+            ), {"mid": match_id}).fetchone()
+
             # 1. Consulta SQL Directa
-            # Buscamos los jugadores asociados a este partido
             query = text("""
                 SELECT player_id, team_id, name, dorsal, position
                 FROM match_players
@@ -136,25 +140,35 @@ def get_match_metadata(match_id: str):
 
             result = conn.execute(query, {"mid": match_id}).fetchall()
 
-            # 2. ValidaciÃ³n de Negocio
             if not result:
-                # Si Postgres no tiene datos, es que el proceso de carga fallÃ³ antes
-                return {"error": "AlineaciÃ³n no encontrada en Base de Datos. Verifique la carga inicial."}
+                return {"error": "Alineacion no encontrada en Base de Datos."}
 
-            # 3. SerializaciÃ³n (Mapping DB -> Frontend)
-            # Transformamos las columnas de la DB al JSON que espera React
             players_list = []
+            team_ids = set()
             for row in result:
+                team_ids.add(row.team_id)
                 players_list.append({
-                    "player_id": row.player_id,     # React key
-                    "team_id": row.team_id,         # Para colores
-                    "short_name": row.name,         # Display
-                    "number": row.dorsal,           # Dorsal
-                    "role": row.position            # PosiciÃ³n (GK, etc)
+                    "player_id": row.player_id,
+                    "team_id": row.team_id,
+                    "short_name": row.name,
+                    "number": row.dorsal,
+                    "role": row.position
                 })
 
-            print(f"âœ… Metadata servida desde SQL: {len(players_list)} jugadores.")
-            return {"players": players_list}
+            # Construir mapa team_id -> team_name
+            team_ids_sorted = sorted(team_ids)
+            home_name = match_row.home_team_name if match_row else "HOME"
+            away_name = match_row.away_team_name if match_row else "AWAY"
+
+            teams = {}
+            if len(team_ids_sorted) >= 2:
+                teams[str(team_ids_sorted[0])] = home_name
+                teams[str(team_ids_sorted[1])] = away_name
+            elif len(team_ids_sorted) == 1:
+                teams[str(team_ids_sorted[0])] = home_name
+
+            print(f"Metadata servida: {len(players_list)} jugadores, equipos: {teams}")
+            return {"players": players_list, "teams": teams, "homeName": home_name, "awayName": away_name}
 
     except Exception as e:
         print(f"âŒ Error crÃ­tico leyendo DB: {e}")
