@@ -236,6 +236,13 @@ function App() {
   const lastEventIndex = useRef(-1);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [servicesStatus, setServicesStatus] = useState({});
+  const [statsTargetPlayer, setStatsTargetPlayer] = useState(null);
+
+  const handleViewPlayerStats = (player) => {
+      setSelectedPlayer(null); // Cerrar modal
+      setStatsTargetPlayer({ name: player.name, number: player.number }); 
+      setActiveTab('matchstats');
+  };
 
   // --- POLL SERVICES STATUS ---
   useEffect(() => {
@@ -585,7 +592,7 @@ return (
 
         {/* TAB: MATCH STATS HUB */}
         {activeTab === 'matchstats' && (
-          <MatchStatsTab />
+          <MatchStatsTab targetPlayer={statsTargetPlayer} />
         )}
 
         {/* TAB: GEMINI VISION (placeholder) */}
@@ -612,6 +619,7 @@ return (
                         awayGoals={awayGoals}
                         homeTeamId={homeTeamId}
                         onClose={() => setSelectedPlayer(null)} 
+                        onViewStats={() => handleViewPlayerStats(selectedPlayer)}
                     />
                 </div>
             </div>

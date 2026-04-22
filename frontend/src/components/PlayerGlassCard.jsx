@@ -13,7 +13,7 @@ const MOCK_STATS = [
   { metric: "PHY", value: 70, fullMark: 100 }, // Physical
 ];
 
-const PlayerGlassCard = ({ player, homeGoals, awayGoals, homeTeamId, onClose }) => {
+const PlayerGlassCard = ({ player, homeGoals, awayGoals, homeTeamId, onClose, onViewStats }) => {
   const [statsData, setStatsData] = useState(MOCK_STATS);
   const [loading, setLoading] = useState(true);
 
@@ -139,6 +139,7 @@ const PlayerGlassCard = ({ player, homeGoals, awayGoals, homeTeamId, onClose }) 
                     className="w-full bg-white/5 hover:bg-white/10 text-white border border-white/10 shadow-lg group"
                     variant="flat"
                     size="lg"
+                    onPress={onViewStats}
                 >
                     <span className="group-hover:text-primary transition-colors">VER ANÁLISIS COMPLETO</span>
                 </Button>
