@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Chip, Slider, Button } from "@nextui-org/react";
+import { Chip, Slider, Button, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Switch } from "@nextui-org/react";
 import { 
   Wifi, WifiOff, Activity, Play, Pause, SkipBack, 
   FastForward, Radio, BrainCircuit, TrendingUp, Users, LayoutGrid, BarChart3
@@ -235,6 +235,39 @@ function App() {
   const ws = useRef(null);
   const lastEventIndex = useRef(-1);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
+  const [servicesStatus, setServicesStatus] = useState({});
+
+  // --- POLL SERVICES STATUS ---
+  useEffect(() => {
+      const fetchServices = async () => {
+          try {
+              const res = await fetch('http://127.0.0.1:8000/admin/services');
+              if (res.ok) {
+                  const data = await res.json();
+                  setServicesStatus(data);
+              }
+          } catch (e) {
+              console.error("Error fetching services:", e);
+          }
+      };
+      fetchServices();
+      const interval = setInterval(fetchServices, 5000);
+      return () => clearInterval(interval);
+  }, []);
+
+  const handleToggleService = async (serviceId, currentStatus) => {
+      const action = currentStatus === 'running' ? 'stop' : 'start';
+      try {
+          // Optimistic update
+          setServicesStatus(prev => ({
+              ...prev,
+              [serviceId]: { ...prev[serviceId], status: action === 'start' ? 'running' : 'stopped' }
+          }));
+          await fetch(`http://127.0.0.1:8000/admin/services/${serviceId}/${action}`, { method: 'POST' });
+      } catch (e) {
+          console.error(`Error toggling service ${serviceId}:`, e);
+      }
+  };
 
   const handleSelectPlayer = (playerData) => {
       setSelectedPlayer(playerData);
@@ -453,10 +486,35 @@ return (
           </div>
           <div className="flex items-center gap-3">
              {isLoadingHistory && <Chip color="warning" variant="dot" size="sm" className="bg-transparent border-none text-warning">BUFFERING</Chip>}
-             <div className={`flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 border ${status === 'ONLINE' ? 'border-success/20' : 'border-danger/20'}`}>
-                {status === 'ONLINE' ? <Wifi size={12} className="text-success" /> : <WifiOff size={12} className="text-danger" />}
-                <span className={`font-mono text-[10px] font-bold ${status === 'ONLINE' ? 'text-success' : 'text-danger'}`}>{status}</span>
-             </div>
+             <Dropdown placement="bottom-end">
+                <DropdownTrigger>
+                   <div className={`flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 border cursor-pointer hover:bg-black/60 transition-colors ${status === 'ONLINE' ? 'border-success/20' : 'border-danger/20'}`}>
+                      {status === 'ONLINE' ? <Wifi size={12} className="text-success" /> : <WifiOff size={12} className="text-danger" />}
+                      <span className={`font-mono text-[10px] font-bold ${status === 'ONLINE' ? 'text-success' : 'text-danger'}`}>{status}</span>
+                   </div>
+                </DropdownTrigger>
+                <DropdownMenu aria-label="Dev Services" className="bg-zinc-950 border border-white/10 rounded-xl w-64 shadow-2xl">
+                   <DropdownItem key="header" className="h-10 gap-2 pointer-events-none" textValue="Dev Services Header">
+                       <p className="font-bold text-[10px] text-zinc-400 uppercase tracking-widest">Microservices Control</p>
+                   </DropdownItem>
+                   {Object.entries(servicesStatus).map(([id, service]) => (
+                       <DropdownItem key={id} textValue={service.name} className="py-3" closeOnSelect={false}>
+                           <div className="flex items-center justify-between w-full">
+                               <div className="flex items-center gap-3">
+                                   <div className={`w-2 h-2 rounded-full ${service.status === 'running' ? 'bg-success shadow-[0_0_8px_rgba(23,201,100,0.8)]' : 'bg-zinc-600'}`} />
+                                   <span className="text-xs font-semibold text-white/90">{service.name}</span>
+                               </div>
+                               <Switch 
+                                   size="sm" 
+                                   color="success" 
+                                   isSelected={service.status === 'running'} 
+                                   onValueChange={() => handleToggleService(id, service.status)}
+                               />
+                           </div>
+                       </DropdownItem>
+                   ))}
+                </DropdownMenu>
+             </Dropdown>
           </div>
         </header>
 

@@ -8,6 +8,8 @@ import os
 import csv
 from src.data.postgres_client import get_db_engine
 from sqlalchemy import text
+import subprocess
+from fastapi import HTTPException
 
 # --- Player ID Mapping (opta <-> tracking) ---
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -23,6 +25,22 @@ try:
     print(f"📋 Player mapping loaded: {len(_OPTA_TO_TRACKING)} entries")
 except Exception as e:
     print(f"⚠️ Could not load player mapping: {e}")
+
+# --- Process Manager Registry ---
+process_registry = {}
+
+import sys
+
+SERVICES_CONFIG = {
+    "streamlit_dashboard": {
+        "command": [sys.executable, "-m", "streamlit", "run", "src/streaming/dashboard.py", "--server.port", "8501", "--server.headless", "true"],
+        "name": "Streamlit Dashboard"
+    },
+    "worker_persist": {
+        "command": [sys.executable, "src/data/worker_persist.py"],
+        "name": "Persistence Worker"
+    }
+}
 
 app = FastAPI()
 
@@ -207,6 +225,56 @@ def get_player_profile(match_id: str, player_id: int, state: str = "Drawing"):
     except Exception as e:
         print(f"❌ Error obteniendo perfil de jugador: {e}")
         return {"error": "Error interno al consultar el perfil"}
+
+# --- Process Management Endpoints ---
+
+@app.get("/admin/services")
+def list_services():
+    """Returns the status of all available microservices."""
+    response = {}
+    for svc_id, config in SERVICES_CONFIG.items():
+        proc = process_registry.get(svc_id)
+        if proc and proc.poll() is None:
+            response[svc_id] = {"name": config["name"], "status": "running", "pid": proc.pid}
+        else:
+            response[svc_id] = {"name": config["name"], "status": "stopped", "pid": None}
+    return response
+
+@app.post("/admin/services/{service_id}/start")
+def start_service(service_id: str):
+    if service_id not in SERVICES_CONFIG:
+        raise HTTPException(status_code=404, detail="Service not found")
+    
+    proc = process_registry.get(service_id)
+    if proc and proc.poll() is None:
+        return {"status": "already_running", "pid": proc.pid}
+    
+    # Start process
+    cmd = SERVICES_CONFIG[service_id]["command"]
+    new_proc = subprocess.Popen(cmd, cwd=_BASE_DIR)
+    process_registry[service_id] = new_proc
+    return {"status": "started", "pid": new_proc.pid}
+
+@app.post("/admin/services/{service_id}/stop")
+def stop_service(service_id: str):
+    if service_id not in SERVICES_CONFIG:
+        raise HTTPException(status_code=404, detail="Service not found")
+    
+    proc = process_registry.get(service_id)
+    if not proc or proc.poll() is not None:
+        return {"status": "already_stopped"}
+    
+    # Stop process
+    try:
+        if os.name == 'nt':
+            subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            proc.kill()
+    except Exception as e:
+        print(f"Error killing {service_id}: {e}")
+    
+    process_registry[service_id] = None
+    return {"status": "stopped"}
 
 
 @app.websocket("/ws/match/{match_id}")
