@@ -1,20 +1,15 @@
 from sqlalchemy import text
 from postgres_client import get_db_engine
 import logging
+import sys
 
 logging.basicConfig(level=logging.INFO)
 
-def init_tables():
-    engine = get_db_engine()
-    
-    ddl = """
-    DROP TABLE IF EXISTS match_tracking CASCADE;
-    DROP TABLE IF EXISTS match_events CASCADE;
-    DROP TABLE IF EXISTS match_players CASCADE;
-    DROP TABLE IF EXISTS matches CASCADE;
-    DROP TABLE IF EXISTS player_season_profile CASCADE;
-    DROP TABLE IF EXISTS player_ghost_profile CASCADE;
+# ==========================================
+# DDL: Definición de tablas
+# ==========================================
 
+CREATE_DDL = """
     -- 1. PARTIDOS (Metadata)
     CREATE TABLE IF NOT EXISTS matches (
         match_id VARCHAR(50) PRIMARY KEY,
@@ -168,12 +163,41 @@ def init_tables():
         pct_distribution FLOAT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
-    """
+"""
+
+DROP_DDL = """
+    DROP TABLE IF EXISTS match_tracking CASCADE;
+    DROP TABLE IF EXISTS match_events CASCADE;
+    DROP TABLE IF EXISTS match_players CASCADE;
+    DROP TABLE IF EXISTS matches CASCADE;
+    DROP TABLE IF EXISTS player_season_profile CASCADE;
+    DROP TABLE IF EXISTS player_ghost_profile CASCADE;
+"""
+
+
+def create_tables():
+    """Crea las tablas si no existen. Idempotente — no destruye datos."""
+    engine = get_db_engine()
     
     with engine.connect() as conn:
-        conn.execute(text(ddl))
+        conn.execute(text(CREATE_DDL))
         conn.commit()
-        print("Tablas creadas en Docker Local.")
+        print("✅ Tablas creadas/verificadas en Docker Local.")
+
+
+def reset_tables():
+    """DESTRUCTIVO: Borra todas las tablas y las recrea vacías."""
+    engine = get_db_engine()
+    
+    with engine.connect() as conn:
+        conn.execute(text(DROP_DDL))
+        conn.execute(text(CREATE_DDL))
+        conn.commit()
+        print("⚠️ Tablas BORRADAS y recreadas en Docker Local.")
+
 
 if __name__ == "__main__":
-    init_tables()
+    if "--reset" in sys.argv:
+        reset_tables()
+    else:
+        create_tables()

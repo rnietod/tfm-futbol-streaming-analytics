@@ -144,44 +144,6 @@ class PersistenceWorker:
         df = df.rename(columns={'player_id': 'master_player_id'})
         return df
 
-    def _upsert_df(self, df: pd.DataFrame, table_name: str, conn):
-        """Implementa un UPSERT manual en PostgreSQL desde un DataFrame"""
-        if df.empty:
-            return
-            
-        # Crear la tabla si no existe usando pandas
-        df.head(0).to_sql(table_name, con=conn, if_exists='append', index=False)
-        
-        columns = list(df.columns)
-        values = [tuple(x) for x in df.to_numpy()]
-        
-        # Generar SQL para ON CONFLICT (master_player_id) DO UPDATE
-        cols_str = '", "'.join(columns)
-        placeholders = ', '.join(['%s'] * len(columns))
-        
-        update_cols = [c for c in columns if c != 'master_player_id']
-        update_str = ', '.join([f'"{c}" = EXCLUDED."{c}"' for c in update_cols])
-        
-        sql = f"""
-            INSERT INTO {table_name} ("{cols_str}")
-            VALUES %s
-            ON CONFLICT (master_player_id) DO UPDATE SET
-            {update_str}
-        """
-        
-        # Necesitamos el cursor raw de pg8000 o psycopg2 a traves de SQLAlchemy
-        from psycopg2.extras import execute_values
-        # Dado que usamos pg8000 (o psycopg2) via sqlalchemy db_engine, extraemos el raw connection
-        raw_conn = conn.connection
-        cursor = raw_conn.cursor()
-        
-        try:
-            # psycopg2 tiene execute_values, pero con pg8000 es distinto.
-            # Mejor usar un enfoque estándar de SQLAlchemy parameters o pandas temporales
-            pass
-        except Exception:
-            pass
-
     def save_season_profile(self, tracking_player_ids: list):
         if self.player_mapping_df.empty or not tracking_player_ids:
             return
@@ -214,15 +176,14 @@ class PersistenceWorker:
                 df_enriched.to_sql(temp_table, con=self.db_engine, if_exists='replace', index=False)
                 
                 # 3. Hacer UPSERT a la real
-                columns = '", "'.join(df_enriched.columns)
+                col_list = ', '.join([f'"{c}"' for c in df_enriched.columns])
                 update_set = ', '.join([f'"{c}" = EXCLUDED."{c}"' for c in df_enriched.columns if c != 'master_player_id'])
                 
-                # Envolver en try-except por statement para aislar el transaction abortion
                 with self.db_engine.connect() as conn:
                     with conn.begin():    
                         upsert_sql = f"""
-                            INSERT INTO player_season_profile ("{columns}")
-                            SELECT "{columns}" FROM {temp_table}
+                            INSERT INTO player_season_profile ({col_list})
+                            SELECT {col_list} FROM {temp_table}
                             ON CONFLICT (master_player_id, season, team_id, game_state) DO UPDATE SET
                             {update_set};
                         """
@@ -259,14 +220,14 @@ class PersistenceWorker:
                 temp_table = f"temp_ghost_{int(time.time()*100)}"
                 df_enriched.to_sql(temp_table, con=self.db_engine, if_exists='replace', index=False)
                 
-                columns = '", "'.join(df_enriched.columns)
+                col_list = ', '.join([f'"{c}"' for c in df_enriched.columns])
                 update_set = ', '.join([f'"{c}" = EXCLUDED."{c}"' for c in df_enriched.columns if c != 'master_player_id'])
                 
                 with self.db_engine.connect() as conn:
                     with conn.begin():
                         upsert_sql = f"""
-                            INSERT INTO player_ghost_profile ("{columns}")
-                            SELECT "{columns}" FROM {temp_table}
+                            INSERT INTO player_ghost_profile ({col_list})
+                            SELECT {col_list} FROM {temp_table}
                             ON CONFLICT (master_player_id) DO UPDATE SET
                             {update_set};
                         """
