@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { TrendingUp, TrendingDown, Minus, Users, Shield } from 'lucide-react';
 
-const GhostTicker = ({ players, onPlayerClick, homeTeam, awayTeam }) => {
+const GhostTicker = ({ players, onPlayerClick, homeTeam, awayTeam, homeTeamId }) => {
   const [filter, setFilter] = useState('all'); // 'all', 'home', 'away'
   const [isPaused, setIsPaused] = useState(false);
 
@@ -9,11 +9,11 @@ const GhostTicker = ({ players, onPlayerClick, homeTeam, awayTeam }) => {
   const filteredPlayers = useMemo(() => {
     if (filter === 'all') return players;
     return players.filter(p => {
-        if (filter === 'home') return p.teamName === homeTeam; 
-        if (filter === 'away') return p.teamName === awayTeam; 
+        if (filter === 'home') return p.team_id === homeTeamId; 
+        if (filter === 'away') return p.team_id !== homeTeamId; 
         return true;
     });
-  }, [players, filter, homeTeam, awayTeam]);
+  }, [players, filter, homeTeamId]);
 
   // 2. Lista infinita
   // Duplicamos x10 para asegurar que cubra pantallas grandes
@@ -51,13 +51,13 @@ const GhostTicker = ({ players, onPlayerClick, homeTeam, awayTeam }) => {
 
         <div className="flex bg-zinc-900 rounded-lg p-0.5 border border-white/5">
             <button 
-                onClick={() => setFilter('home')}
+                onClick={() => setFilter(filter === 'home' ? 'all' : 'home')}
                 className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all flex items-center gap-1 ${filter === 'home' ? 'bg-zinc-700 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
             >
                 <Shield size={10} /> {homeTeam ? homeTeam.substring(0, 3).toUpperCase() : 'HOME'}
             </button>
             <button 
-                onClick={() => setFilter('away')}
+                onClick={() => setFilter(filter === 'away' ? 'all' : 'away')}
                 className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all flex items-center gap-1 ${filter === 'away' ? 'bg-zinc-700 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
             >
                 <Users size={10} /> {awayTeam ? awayTeam.substring(0, 3).toUpperCase() : 'AWAY'}
@@ -93,9 +93,7 @@ const GhostTicker = ({ players, onPlayerClick, homeTeam, awayTeam }) => {
                 className="flex items-center gap-3 group cursor-pointer select-none hover:opacity-100 opacity-80 transition-opacity"
               >
                 <div className="flex flex-col items-end leading-none">
-                    <span className="text-[9px] font-mono text-zinc-600 whitespace-nowrap">
-                        #{player.number || '00'} {player.teamName ? `| ${player.teamName}` : ''}
-                    </span>
+                    <span className="text-[9px] font-mono text-zinc-600">#{player.number || '00'}</span>
                     <span className="text-xs font-bold text-zinc-400 group-hover:text-white transition-colors">
                         {player.name ? player.name.toUpperCase() : "JUGADOR"}
                     </span>

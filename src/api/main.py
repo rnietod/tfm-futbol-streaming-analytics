@@ -162,8 +162,9 @@ def get_match_metadata(match_id: str):
 
             teams = {}
             if len(team_ids_sorted) >= 2:
-                teams[str(team_ids_sorted[0])] = home_name
-                teams[str(team_ids_sorted[1])] = away_name
+                # El equipo local (ej. Real Madrid) en este dataset resulta tener el ID mayor
+                teams[str(team_ids_sorted[1])] = home_name
+                teams[str(team_ids_sorted[0])] = away_name
             elif len(team_ids_sorted) == 1:
                 teams[str(team_ids_sorted[0])] = home_name
 

@@ -389,11 +389,15 @@ function App() {
         id: i,
         name: p.name,
         number: p.number,
-        team_id: p.team_id,
-        teamName: teamsMap[p.team_id] || '',
+        team_id: String(p.team_id),
         deviation: (Math.random() * 5 - 2).toFixed(1) // Placeholder dinámico
     }));
-  }, [playerMap, teamsMap]);
+  }, [playerMap]);
+
+  const homeTeamId = useMemo(() => {
+    if (!teamsMap || !homeTeam) return null;
+    return Object.keys(teamsMap).find(id => teamsMap[id] === homeTeam) || Object.keys(teamsMap)[0];
+  }, [teamsMap, homeTeam]);
 
 
   // --- RENDER FINAL ---
@@ -461,6 +465,7 @@ return (
                 onPlayerClick={handleSelectPlayer} 
                 homeTeam={homeTeam}
                 awayTeam={awayTeam}
+                homeTeamId={homeTeamId}
             />
 
             {/* MAIN LAYOUT */}
