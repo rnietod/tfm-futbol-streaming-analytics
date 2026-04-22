@@ -385,14 +385,18 @@ function App() {
 
   // Lista de Jugadores para el Ticker (Derivada del mapa)
   const tickerPlayers = useMemo(() => {
-    return Object.values(playerMap).map((p, i) => ({
-        id: i,
-        name: p.name,
-        number: p.number,
-        team_id: String(p.team_id),
-        deviation: (Math.random() * 5 - 2).toFixed(1) // Placeholder dinámico
-    }));
-  }, [playerMap]);
+    return Object.keys(playerMap).map((pid, i) => {
+        const p = playerMap[pid];
+        return {
+            id: pid,
+            name: p.name,
+            number: p.number,
+            team_id: String(p.team_id),
+            team_name: teamsMap[String(p.team_id)] || 'UNKNOWN',
+            deviation: (Math.random() * 5 - 2).toFixed(1) // Placeholder dinámico
+        };
+    });
+  }, [playerMap, teamsMap]);
 
   const homeTeamId = useMemo(() => {
     if (!teamsMap || !homeTeam) return null;
@@ -546,6 +550,9 @@ return (
                 <div className="z-10 animate-in zoom-in-95 duration-300 relative">
                     <PlayerGlassCard 
                         player={selectedPlayer} 
+                        homeGoals={homeGoals}
+                        awayGoals={awayGoals}
+                        homeTeamId={homeTeamId}
                         onClose={() => setSelectedPlayer(null)} 
                     />
                 </div>

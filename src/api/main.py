@@ -172,8 +172,41 @@ def get_match_metadata(match_id: str):
             return {"players": players_list, "teams": teams, "homeName": home_name, "awayName": away_name}
 
     except Exception as e:
-        print(f"âŒ Error crÃ­tico leyendo DB: {e}")
+        print(f"â Œ Error crÃ­tico leyendo DB: {e}")
         return {"error": "Error de conexiÃ³n con Base de Datos"}
+
+
+@app.get("/match/{match_id}/player/{player_id}/profile")
+def get_player_profile(match_id: str, player_id: int, state: str = "Drawing"):
+    """
+    Obtiene el perfil ghost de BigQuery basado en el estado del partido (Winning, Losing, Drawing).
+    """
+    try:
+        engine = get_db_engine()
+        with engine.connect() as conn:
+            query = text("""
+                SELECT
+                    pct_goals, pct_shots, pct_xg, pct_creation, pct_progression, pct_defense
+                FROM player_ghost_profile
+                WHERE tracking_player_id = :pid AND game_state = :state
+                LIMIT 1
+            """)
+            result = conn.execute(query, {"pid": player_id, "state": state}).fetchone()
+            if result:
+                return {
+                    "stats": [
+                        { "metric": "GOALS", "value": int((result.pct_goals or 0) * 100), "fullMark": 100 },
+                        { "metric": "SHOTS", "value": int((result.pct_shots or 0) * 100), "fullMark": 100 },
+                        { "metric": "xG", "value": int((result.pct_xg or 0) * 100), "fullMark": 100 },
+                        { "metric": "CREA", "value": int((result.pct_creation or 0) * 100), "fullMark": 100 },
+                        { "metric": "PROG", "value": int((result.pct_progression or 0) * 100), "fullMark": 100 },
+                        { "metric": "DEF", "value": int((result.pct_defense or 0) * 100), "fullMark": 100 }
+                    ]
+                }
+            return {"stats": None}
+    except Exception as e:
+        print(f"❌ Error obteniendo perfil de jugador: {e}")
+        return {"error": "Error interno al consultar el perfil"}
 
 
 @app.websocket("/ws/match/{match_id}")

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardBody, CardFooter, Avatar, Button, Chip } from "@nextui-org/react";
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts';
 import { X, TrendingUp, Shield } from 'lucide-react';
@@ -13,7 +13,44 @@ const MOCK_STATS = [
   { metric: "PHY", value: 70, fullMark: 100 }, // Physical
 ];
 
-const PlayerGlassCard = ({ player, onClose }) => {
+const PlayerGlassCard = ({ player, homeGoals, awayGoals, homeTeamId, onClose }) => {
+  const [statsData, setStatsData] = useState(MOCK_STATS);
+  const [loading, setLoading] = useState(true);
+
+  // Compute Game State
+  const gameState = useMemo(() => {
+     if (!player) return "Drawing";
+     const isHome = player.team_id === homeTeamId;
+     if (isHome) {
+         if (homeGoals > awayGoals) return "Winning";
+         if (homeGoals < awayGoals) return "Losing";
+     } else {
+         if (awayGoals > homeGoals) return "Winning";
+         if (awayGoals < homeGoals) return "Losing";
+     }
+     return "Drawing";
+  }, [player, homeGoals, awayGoals, homeTeamId]);
+
+  // Fetch real stats
+  useEffect(() => {
+     if (!player) return;
+     setLoading(true);
+     fetch(`http://127.0.0.1:8000/match/test_match/player/${player.id}/profile?state=${gameState}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.stats) {
+                setStatsData(data.stats);
+            } else {
+                setStatsData(MOCK_STATS); // fallback
+            }
+        })
+        .catch(e => {
+            console.error("Error fetching player profile:", e);
+            setStatsData(MOCK_STATS);
+        })
+        .finally(() => setLoading(false));
+  }, [player, gameState]);
+
   // Si no hay jugador seleccionado, no renderizamos nada (o null)
   if (!player) return null;
 
@@ -51,10 +88,12 @@ const PlayerGlassCard = ({ player, onClose }) => {
                         <h2 className="text-2xl font-bold text-white tracking-tight flex items-center justify-center gap-2">
                             {player.name || "J. ÁLVAREZ"}
                             <span className="text-sm font-mono text-primary border border-primary/30 px-1 rounded bg-primary/10">
-                                #19
+                                #{player.number || "00"}
                             </span>
                         </h2>
-                        <span className="text-xs text-zinc-400 uppercase tracking-[0.2em] font-bold">Manchester City</span>
+                        <span className="text-xs text-zinc-400 uppercase tracking-[0.2em] font-bold">
+                            {player.team_name || "Unknown Team"}
+                        </span>
                     </div>
 
                     {/* Badges Rápidas */}
@@ -67,7 +106,7 @@ const PlayerGlassCard = ({ player, onClose }) => {
                 {/* BODY: Radar Chart */}
                 <div className="w-full h-[220px] relative -ml-2">
                     <ResponsiveContainer width="100%" height="100%">
-                        <RadarChart cx="50%" cy="50%" outerRadius="70%" data={MOCK_STATS}>
+                        <RadarChart cx="50%" cy="50%" outerRadius="70%" data={statsData}>
                             <PolarGrid stroke="#3f3f46" strokeDasharray="3 3" />
                             <PolarAngleAxis 
                                 dataKey="metric" 
@@ -86,7 +125,9 @@ const PlayerGlassCard = ({ player, onClose }) => {
                     
                     {/* Valoración General en el centro del Radar */}
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
-                        <span className="text-3xl font-bold text-white drop-shadow-md">89</span>
+                        <span className="text-3xl font-bold text-white drop-shadow-md">
+                            {Math.round(statsData.reduce((acc, curr) => acc + curr.value, 0) / statsData.length)}
+                        </span>
                         <div className="text-[8px] text-zinc-500 uppercase font-bold">OVR</div>
                     </div>
                 </div>
