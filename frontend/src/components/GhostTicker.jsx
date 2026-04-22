@@ -1,20 +1,19 @@
 import React, { useState, useMemo } from 'react';
 import { TrendingUp, TrendingDown, Minus, Users, Shield } from 'lucide-react';
 
-const GhostTicker = ({ players, onPlayerClick }) => {
+const GhostTicker = ({ players, onPlayerClick, homeTeam, awayTeam }) => {
   const [filter, setFilter] = useState('all'); // 'all', 'home', 'away'
   const [isPaused, setIsPaused] = useState(false);
 
   // 1. Filtrado de jugadores
   const filteredPlayers = useMemo(() => {
     if (filter === 'all') return players;
-    // Ajusta la lógica de team_id según tus datos reales (ej: 275 vs 262)
     return players.filter(p => {
-        if (filter === 'home') return p.team_id === 275; 
-        if (filter === 'away') return p.team_id !== 275; 
+        if (filter === 'home') return p.teamName === homeTeam; 
+        if (filter === 'away') return p.teamName === awayTeam; 
         return true;
     });
-  }, [players, filter]);
+  }, [players, filter, homeTeam, awayTeam]);
 
   // 2. Lista infinita
   // Duplicamos x10 para asegurar que cubra pantallas grandes
@@ -55,13 +54,13 @@ const GhostTicker = ({ players, onPlayerClick }) => {
                 onClick={() => setFilter('home')}
                 className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all flex items-center gap-1 ${filter === 'home' ? 'bg-zinc-700 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
             >
-                <Shield size={10} /> HOME
+                <Shield size={10} /> {homeTeam ? homeTeam.substring(0, 3).toUpperCase() : 'HOME'}
             </button>
             <button 
                 onClick={() => setFilter('away')}
                 className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all flex items-center gap-1 ${filter === 'away' ? 'bg-zinc-700 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
             >
-                <Users size={10} /> AWAY
+                <Users size={10} /> {awayTeam ? awayTeam.substring(0, 3).toUpperCase() : 'AWAY'}
             </button>
         </div>
       </div>
@@ -94,7 +93,9 @@ const GhostTicker = ({ players, onPlayerClick }) => {
                 className="flex items-center gap-3 group cursor-pointer select-none hover:opacity-100 opacity-80 transition-opacity"
               >
                 <div className="flex flex-col items-end leading-none">
-                    <span className="text-[9px] font-mono text-zinc-600">#{player.number || '00'}</span>
+                    <span className="text-[9px] font-mono text-zinc-600 whitespace-nowrap">
+                        #{player.number || '00'} {player.teamName ? `| ${player.teamName}` : ''}
+                    </span>
                     <span className="text-xs font-bold text-zinc-400 group-hover:text-white transition-colors">
                         {player.name ? player.name.toUpperCase() : "JUGADOR"}
                     </span>

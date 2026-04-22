@@ -389,9 +389,11 @@ function App() {
         id: i,
         name: p.name,
         number: p.number,
+        team_id: p.team_id,
+        teamName: teamsMap[p.team_id] || '',
         deviation: (Math.random() * 5 - 2).toFixed(1) // Placeholder dinámico
     }));
-  }, [playerMap]);
+  }, [playerMap, teamsMap]);
 
 
   // --- RENDER FINAL ---
@@ -457,6 +459,8 @@ return (
             <GhostTicker 
                 players={tickerPlayers} 
                 onPlayerClick={handleSelectPlayer} 
+                homeTeam={homeTeam}
+                awayTeam={awayTeam}
             />
 
             {/* MAIN LAYOUT */}
