@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { BarChart3, Users, User, ChevronRight, Loader2, WifiOff } from 'lucide-react';
 import TeamComparison from './TeamComparison';
 import PlayerDeepDive from './PlayerDeepDive';
@@ -105,7 +105,7 @@ const ErrorState = ({ error, onRetry }) => (
 // ============================================================
 // MAIN ORCHESTRATOR
 // ============================================================
-const MatchStatsTab = () => {
+const MatchStatsTab = ({ targetPlayer }) => {
   const [selectedTeam, setSelectedTeam] = useState('teamA');
   const [viewMode, setViewMode] = useState('overview');
   const [selectedPlayerId, setSelectedPlayerId] = useState(null);
@@ -143,6 +143,55 @@ const MatchStatsTab = () => {
   const teamColor = selectedTeam === 'teamA' ? '#006FEE' : '#f31260';
   const teamShortA = teamA?.teamShort || 'A';
   const teamShortB = teamB?.teamShort || 'B';
+
+  // Handle incoming targetPlayer from Dashboard
+  useEffect(() => {
+    if (targetPlayer && statsData?.players) {
+        const targetName = (targetPlayer.name || "").toLowerCase();
+        const targetNum = targetPlayer.number;
+        const targetLastName = targetName.split(' ').pop(); // e.g. "griezmann"
+        
+        let found = null;
+        
+        // 1. Try exact match by shortName or name
+        found = Object.values(statsData.players).find(
+            p => (p.info.shortName || "").toLowerCase() === targetName || 
+                 (p.info.name || "").toLowerCase() === targetName
+        );
+        
+        // 2. If not found, try fuzzy match (last name + number)
+        if (!found) {
+            found = Object.values(statsData.players).find(p => {
+                const optaName = (p.info.name || "").toLowerCase();
+                const optaNum = p.info.number;
+                
+                // Matches last name and has the exact same number
+                if (targetNum && optaNum === targetNum && optaName.includes(targetLastName)) {
+                    return true;
+                }
+                
+                // Or just strongly matches the last name if no number is available
+                if (optaName.includes(targetLastName) && targetLastName.length > 3) {
+                    return true;
+                }
+                
+                return false;
+            });
+        }
+        
+        // 3. Fallback: just number match (Risky, but better than nothing if names are totally different)
+        if (!found && targetNum) {
+             found = Object.values(statsData.players).find(p => p.info.number === targetNum);
+        }
+        
+        if (found) {
+            setViewMode('player');
+            setSelectedPlayerId(found.info.id);
+            if (found.info.teamName === teamA?.teamName) setSelectedTeam('teamA');
+            else if (found.info.teamName === teamB?.teamName) setSelectedTeam('teamB');
+        }
+    }
+  }, [targetPlayer, statsData, teamA, teamB]);
 
   // Fetch pitch data for selected player
   const { pitchData: livePitchData, isLoading: pitchLoading } = usePlayerPitchData(
