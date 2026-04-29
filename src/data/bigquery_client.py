@@ -103,3 +103,32 @@ class BigQueryClient:
         except Exception as e:
             logger.error(f"Error consultando mart_ghost_profile: {e}")
             raise
+
+    def predict_xg(self, distance: float, angle: float, body_part: str, play_pattern: str) -> float:
+        """
+        Predice el xG de un tiro usando el modelo ML.PREDICT de BigQuery.
+        """
+        query = f"""
+            SELECT predicted_is_goal_probs
+            FROM ML.PREDICT(
+                MODEL `tfm-master-futbol.ml_football.model_xg`,
+                (SELECT 
+                    {distance} AS distance_to_goal, 
+                    {angle} AS angle_visible, 
+                    '{body_part}' AS body_part, 
+                    '{play_pattern}' AS play_pattern
+                )
+            )
+        """
+        try:
+            df = self._client.query(query).to_dataframe()
+            if not df.empty:
+                # ML.PREDICT retorna un array de structs 'predicted_is_goal_probs' con 'label' y 'prob'
+                probs = df.iloc[0]['predicted_is_goal_probs']
+                for p in probs:
+                    if p['label'] == 1:
+                        return float(p['prob'])
+            return 0.0
+        except Exception as e:
+            logger.error(f"Error prediciendo xG: {e}")
+            return 0.0

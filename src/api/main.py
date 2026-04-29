@@ -482,7 +482,12 @@ def get_match_stats(match_id: str):
                         AND (end_location_x - location_x) > 10 THEN 1 ELSE 0 END) AS progressive_passes,
                     SUM(CASE WHEN event_type_id = 10 THEN 1 ELSE 0 END) AS interceptions,
                     SUM(CASE WHEN event_type_id = 4 AND outcome_name = 'Won' THEN 1 ELSE 0 END) AS duels_won,
-                    SUM(CASE WHEN event_type_id = 9 THEN 1 ELSE 0 END) AS clearances
+                    SUM(CASE WHEN event_type_id = 9 THEN 1 ELSE 0 END) AS clearances,
+                    SUM(xg) AS total_xg,
+                    SUM(CASE WHEN xg > 0.3 THEN 1 ELSE 0 END) AS big_chances,
+                    SUM(CASE WHEN xg > 0.3 AND outcome_name != 'Goal' THEN 1 ELSE 0 END) AS big_chances_missed,
+                    SUM(CASE WHEN event_type_id = 22 THEN 1 ELSE 0 END) AS fouls,
+                    SUM(CASE WHEN type_id = 61 THEN 1 ELSE 0 END) AS corners
                 FROM match_events
                 WHERE match_id = :mid AND team_name IS NOT NULL
                 GROUP BY team_name
@@ -492,6 +497,30 @@ def get_match_stats(match_id: str):
                 return {"error": "No event data found"}
 
             all_passes = sum(int(r.total_passes or 0) for r in team_rows) or 1
+
+            # Pass network & avg positions — computed purely from match_events
+            # (match_players uses different ID system so JOINs don't match)
+            pass_network_rows = []
+            avg_pos_rows = []
+            try:
+                pass_network_rows = conn.execute(text("""
+                    SELECT team_name, player_name as from_name, player_id as from_player_id,
+                           pass_recipient_name as to_name, COUNT(*) as count
+                    FROM match_events
+                    WHERE match_id = :mid AND event_type_id = 30 AND outcome_id IS NULL 
+                          AND pass_recipient_name IS NOT NULL AND player_name IS NOT NULL
+                    GROUP BY team_name, player_name, player_id, pass_recipient_name
+                """), {"mid": match_id}).fetchall()
+
+                avg_pos_rows = conn.execute(text("""
+                    SELECT team_name, player_name as name, player_id,
+                           AVG(location_x) as avg_x, AVG(location_y) as avg_y, COUNT(*) as touches
+                    FROM match_events
+                    WHERE match_id = :mid AND location_x IS NOT NULL AND player_name IS NOT NULL
+                    GROUP BY team_name, player_name, player_id
+                """), {"mid": match_id}).fetchall()
+            except Exception as net_err:
+                print(f"⚠️ Pass network query error (non-fatal): {net_err}")
 
             teams_data = {}
             for r in team_rows:
@@ -503,11 +532,19 @@ def get_match_stats(match_id: str):
                 teams_data[r.team_name] = {
                     "teamName": r.team_name,
                     "teamShort": "",
+                    "goals": int(r.goals or 0),
                     "topStats": {
-                        "xG": 0,
+                        "xG": round(float(r.total_xg or 0), 2),
                         "totalShots": int(r.total_shots or 0),
                         "shotsOnTarget": int(r.shots_on_target or 0),
                         "possession": poss,
+                        "bigChances": int(r.big_chances or 0),
+                        "bigChancesMissed": int(r.big_chances_missed or 0),
+                        "totalPasses": tp,
+                        "accuratePasses": ap,
+                        "passAccuracy": pacc,
+                        "fouls": int(r.fouls or 0),
+                        "corners": int(r.corners or 0)
                     },
                     "passing": {
                         "accuratePasses": ap,
@@ -519,7 +556,59 @@ def get_match_stats(match_id: str):
                         "tacklesWon": int(r.duels_won or 0),
                         "clearances": int(r.clearances or 0),
                     },
+                    "passNetwork": [],
+                    "averagePositions": []
                 }
+                
+            # Build a name→dorsal map from match_players for jersey numbers
+            dorsal_map = {}
+            try:
+                mp_rows = conn.execute(text(
+                    "SELECT name, dorsal FROM match_players WHERE match_id = :mid AND dorsal IS NOT NULL"
+                ), {"mid": match_id}).fetchall()
+                for mp in mp_rows:
+                    if mp.name and mp.dorsal:
+                        dorsal_map[mp.name.lower()] = int(mp.dorsal)
+            except Exception:
+                pass
+
+            def find_dorsal(full_name):
+                """Try to match a full StatsBomb name to a match_players short name via last name."""
+                if not full_name:
+                    return None
+                fn_lower = full_name.lower()
+                # Direct match
+                if fn_lower in dorsal_map:
+                    return dorsal_map[fn_lower]
+                # Last-name match: extract last word of full name and check if any key contains it
+                parts = fn_lower.split()
+                for last in reversed(parts):
+                    if len(last) < 3:
+                        continue
+                    for key, dorsal in dorsal_map.items():
+                        if last in key or key.endswith(last):
+                            return dorsal
+                return None
+
+            for pr in pass_network_rows:
+                if pr.team_name in teams_data:
+                    teams_data[pr.team_name]["passNetwork"].append({
+                        "from_player_id": pr.from_player_id,
+                        "from_name": pr.from_name,
+                        "to_name": pr.to_name,
+                        "count": pr.count
+                    })
+
+            for ar in avg_pos_rows:
+                if ar.team_name in teams_data:
+                    # Normalize coords from 120x80 to 100x100
+                    teams_data[ar.team_name]["averagePositions"].append({
+                        "player_id": ar.player_id,
+                        "name": ar.name,
+                        "number": find_dorsal(ar.name),
+                        "x": round(float(ar.avg_x) / 1.2, 1),
+                        "y": round(float(ar.avg_y) / 0.8, 1)
+                    })
 
             team_a_data = {}
             team_b_data = {}

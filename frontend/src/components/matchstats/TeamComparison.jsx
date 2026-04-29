@@ -1,178 +1,294 @@
-import React from 'react';
-import { Crosshair, Navigation, Shield } from 'lucide-react';
+import React, { useState } from 'react';
+import { Network, Target, Thermometer } from 'lucide-react';
+import PassingNetworkPitch from './PassingNetworkPitch';
 
 // ============================================================
-// TEAM COMPARISON — FotMob-Inspired Stat Bars
+// TEAM COMPARISON — Desktop-first layout
+//
+//  ┌─────────────────────────────────────────────────────┐
+//  │  Team Toggle (full width, top)                      │
+//  ├──────┬──────────────┬──────────────────────────────┤
+//  │ Btn  │  Pitch 40%   │  Stats panel 60%             │
+//  │ col  │  (vertical)  │  [Section tabs + stat rows]  │
+//  └──────┴──────────────┴──────────────────────────────┘
 // ============================================================
 
-// --- STAT BAR ROW ---
-const StatBar = ({ label, valueA, valueB, format = 'number', teamAColor = '#006FEE', teamBColor = '#f31260' }) => {
-  const numA = parseFloat(valueA) || 0;
-  const numB = parseFloat(valueB) || 0;
-  const total = numA + numB || 1;
-  const pctA = (numA / total) * 100;
-  const pctB = (numB / total) * 100;
+// ── ANALYSIS MODES ──────────────────────────────────────────
+const ANALYSES = [
+  { id: 'passing',  label: 'Pass Net',  icon: Network     },
+  { id: 'shots',    label: 'Shots',     icon: Target      },
+  { id: 'pressure', label: 'Pressure',  icon: Thermometer },
+];
 
-  // Determine who "wins"
-  const aWins = numA > numB;
-  const bWins = numB > numA;
+// Vertical icon+label buttons on the left of the pitch
+const AnalysisSidebar = ({ active, onChange }) => (
+  <div className="flex flex-col gap-1.5 p-1 bg-zinc-950/70 rounded-xl border border-white/5 items-center">
+    {ANALYSES.map(({ id, label, icon: Icon }) => {
+      const isActive = active === id;
+      return (
+        <button
+          key={id}
+          onClick={() => onChange(id)}
+          title={label}
+          className={`
+            w-full flex flex-col items-center gap-1 py-2.5 px-1 rounded-lg
+            transition-all duration-200 text-[9px] font-bold uppercase tracking-wider
+            ${isActive
+              ? 'bg-white/10 text-white border border-white/15'
+              : 'text-zinc-600 hover:text-zinc-400 border border-transparent hover:bg-white/5'
+            }
+          `}
+        >
+          <Icon size={14} />
+          <span style={{ writingMode: 'horizontal-tb' }}>{label}</span>
+        </button>
+      );
+    })}
+  </div>
+);
 
-  const formatVal = (v) => {
-    if (format === 'pct') return `${v}%`;
-    if (format === 'decimal') return parseFloat(v).toFixed(2);
-    return v;
-  };
+// ── TEAM TOGGLE ──────────────────────────────────────────────
+const TeamToggle = ({ teamA, teamB, value, onChange }) => (
+  <div className="flex items-center gap-1 p-1 bg-zinc-950/70 rounded-xl border border-white/5">
+    {[
+      { key: 'teamA', name: teamA?.teamName, color: '#006FEE' },
+      { key: 'teamB', name: teamB?.teamName, color: '#f31260' },
+    ].map(({ key, name, color }) => {
+      const isActive = value === key;
+      return (
+        <button
+          key={key}
+          onClick={() => onChange(key)}
+          className={`flex-1 py-1.5 px-3 rounded-lg text-[11px] font-bold tracking-wider
+            transition-all duration-200 ${isActive ? 'text-white border' : 'text-zinc-500 hover:text-zinc-300 border border-transparent'}`}
+          style={isActive ? {
+            backgroundColor: `${color}22`,
+            borderColor: `${color}44`,
+            boxShadow: `0 0 12px ${color}22`,
+          } : {}}
+        >
+          {name || key}
+        </button>
+      );
+    })}
+  </div>
+);
 
+// ── POSSESSION BAR ───────────────────────────────────────────
+const PossessionBar = ({ valueA, valueB }) => {
+  const a    = parseFloat(valueA) || 0;
+  const b    = parseFloat(valueB) || 0;
+  const tot  = a + b || 1;
+  const pctA = (a / tot) * 100;
+  const pctB = (b / tot) * 100;
   return (
-    <div className="flex items-center gap-3 py-2 group">
-      {/* Value A */}
-      <span
-        className={`w-12 text-right font-mono text-sm tabular-nums transition-colors duration-300 ${
-          aWins ? 'text-white font-bold' : 'text-zinc-500'
-        }`}
-      >
-        {formatVal(valueA)}
-      </span>
-
-      {/* Bar Container */}
-      <div className="flex-1 flex items-center gap-0.5 h-5 relative">
-        {/* Bar A (grows right-to-left) */}
-        <div className="flex-1 flex justify-end h-full">
-          <div
-            className="h-full rounded-l-sm transition-all duration-700 ease-out relative overflow-hidden"
-            style={{
-              width: `${pctA}%`,
-              backgroundColor: teamAColor,
-              opacity: aWins ? 0.9 : 0.4,
-            }}
-          >
-            {/* Shimmer */}
-            <div
-              className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-              style={{
-                background: `linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent)`,
-              }}
-            />
-          </div>
+    <div className="mb-3">
+      <p className="text-[9px] font-bold tracking-widest text-zinc-500 uppercase text-center mb-1.5">Possession</p>
+      <div className="w-full h-5 flex rounded-lg overflow-hidden gap-px">
+        <div className="h-full flex items-center justify-start px-2 transition-all duration-700 rounded-l-lg"
+          style={{ width: `${pctA}%`, backgroundColor: '#006FEE' }}>
+          <span className="text-white font-bold text-[10px]">{Math.round(pctA)}%</span>
         </div>
-
-        {/* Center divider */}
-        <div className="w-[1px] h-full bg-zinc-700 flex-shrink-0" />
-
-        {/* Bar B (grows left-to-right) */}
-        <div className="flex-1 flex justify-start h-full">
-          <div
-            className="h-full rounded-r-sm transition-all duration-700 ease-out relative overflow-hidden"
-            style={{
-              width: `${pctB}%`,
-              backgroundColor: teamBColor,
-              opacity: bWins ? 0.9 : 0.4,
-            }}
-          >
-            <div
-              className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-              style={{
-                background: `linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent)`,
-              }}
-            />
-          </div>
+        <div className="h-full flex items-center justify-end px-2 transition-all duration-700 rounded-r-lg"
+          style={{ width: `${pctB}%`, backgroundColor: '#f31260' }}>
+          <span className="text-white font-bold text-[10px]">{Math.round(pctB)}%</span>
         </div>
       </div>
-
-      {/* Value B */}
-      <span
-        className={`w-12 text-left font-mono text-sm tabular-nums transition-colors duration-300 ${
-          bWins ? 'text-white font-bold' : 'text-zinc-500'
-        }`}
-      >
-        {formatVal(valueB)}
-      </span>
     </div>
   );
 };
 
-// --- STAT GROUP SECTION ---
-const StatGroup = ({ title, icon: Icon, stats }) => (
-  <div className="bg-zinc-900/50 backdrop-blur-sm rounded-xl border border-white/5 p-4 space-y-1">
-    {/* Group Header */}
-    <div className="flex items-center gap-2 mb-3 pb-2 border-b border-white/5">
-      <Icon size={13} className="text-primary" />
-      <span className="text-[10px] font-bold tracking-widest text-zinc-400 uppercase">{title}</span>
-    </div>
+// ── STAT ROW ─────────────────────────────────────────────────
+const StatRow = ({ label, valueA, valueB, format = 'number' }) => {
+  const numA  = parseFloat(valueA) || 0;
+  const numB  = parseFloat(valueB) || 0;
+  const aWins = numA > numB;
+  const bWins = numB > numA;
 
-    {/* Stat Rows */}
-    {stats.map((stat) => (
-      <div key={stat.label}>
-        {/* Label centered */}
-        <p className="text-[10px] text-zinc-500 text-center font-medium tracking-wider uppercase mb-0.5">
-          {stat.label}
-        </p>
-        <StatBar {...stat} />
-      </div>
-    ))}
-  </div>
-);
+  const fmt = (v) => {
+    if (format === 'decimal') return parseFloat(v || 0).toFixed(2);
+    if (format === 'pct')     return `${v ?? 0}%`;
+    return v ?? 0;
+  };
+
+  const Pill = ({ value, wins, color }) => (
+    <div
+      className={`min-w-[44px] text-center px-2 py-0.5 rounded-full text-xs font-bold tabular-nums
+        transition-all duration-300 ${wins ? 'text-white' : 'text-zinc-500'}`}
+      style={wins ? { backgroundColor: color } : {}}
+    >
+      {fmt(value)}
+    </div>
+  );
+
+  return (
+    <div className="flex items-center justify-between py-1.5 border-b border-white/[0.04] last:border-0">
+      <Pill value={valueA} wins={aWins} color="#006FEE" />
+      <span className="flex-1 text-center text-[11px] font-medium text-zinc-400 px-2">{label}</span>
+      <Pill value={valueB} wins={bWins} color="#f31260" />
+    </div>
+  );
+};
+
+// ── STATS SECTION TABS ───────────────────────────────────────
+const STAT_SECTIONS = ['Top Stats', 'Attacking', 'Defending', 'Passing', 'Fouls'];
+
+const buildSections = (teamA, teamB) => ({
+  'Top Stats': [
+    { label: 'Possession',       valueA: teamA.topStats?.possession,     valueB: teamB.topStats?.possession,     format: 'pct'     },
+    { label: 'Expected Goals',   valueA: teamA.topStats?.xG,             valueB: teamB.topStats?.xG,             format: 'decimal' },
+    { label: 'Total Shots',      valueA: teamA.topStats?.totalShots,     valueB: teamB.topStats?.totalShots      },
+    { label: 'Shots on Target',  valueA: teamA.topStats?.shotsOnTarget,  valueB: teamB.topStats?.shotsOnTarget   },
+    { label: 'Big Chances',      valueA: teamA.topStats?.bigChances,     valueB: teamB.topStats?.bigChances      },
+  ],
+  'Attacking': [
+    { label: 'Total Shots',        valueA: teamA.topStats?.totalShots,       valueB: teamB.topStats?.totalShots       },
+    { label: 'Shots on Target',    valueA: teamA.topStats?.shotsOnTarget,     valueB: teamB.topStats?.shotsOnTarget    },
+    { label: 'Big Chances',        valueA: teamA.topStats?.bigChances,        valueB: teamB.topStats?.bigChances       },
+    { label: 'Big Chances Missed', valueA: teamA.topStats?.bigChancesMissed,  valueB: teamB.topStats?.bigChancesMissed },
+    { label: 'xG',                 valueA: teamA.topStats?.xG,                valueB: teamB.topStats?.xG,               format: 'decimal' },
+  ],
+  'Defending': [
+    { label: 'Interceptions', valueA: teamA.defense?.interceptions, valueB: teamB.defense?.interceptions },
+    { label: 'Tackles Won',   valueA: teamA.defense?.tacklesWon,    valueB: teamB.defense?.tacklesWon    },
+    { label: 'Clearances',    valueA: teamA.defense?.clearances,    valueB: teamB.defense?.clearances    },
+  ],
+  'Passing': [
+    { label: 'Total Passes',        valueA: teamA.topStats?.totalPasses,      valueB: teamB.topStats?.totalPasses      },
+    { label: 'Accurate Passes',     valueA: teamA.topStats?.accuratePasses,   valueB: teamB.topStats?.accuratePasses   },
+    { label: 'Pass Accuracy',       valueA: teamA.topStats?.passAccuracy,     valueB: teamB.topStats?.passAccuracy,     format: 'pct' },
+    { label: 'Progressive Passes',  valueA: teamA.passing?.progressivePasses, valueB: teamB.passing?.progressivePasses },
+  ],
+  'Fouls': [
+    { label: 'Fouls',        valueA: teamA.topStats?.fouls,   valueB: teamB.topStats?.fouls   },
+    { label: 'Corner Kicks', valueA: teamA.topStats?.corners, valueB: teamB.topStats?.corners },
+  ],
+});
 
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
 const TeamComparison = ({ teamA, teamB }) => {
+  const [pitchTeam,    setPitchTeam]    = useState('teamA');
+  const [analysis,     setAnalysis]     = useState('passing');
+  const [activeSection, setActiveSection] = useState('Top Stats');
+
   if (!teamA || !teamB) return null;
 
-  const statGroups = [
-    {
-      title: 'Top Stats',
-      icon: Crosshair,
-      stats: [
-        { label: 'Expected Goals (xG)', valueA: teamA.topStats.xG, valueB: teamB.topStats.xG, format: 'decimal' },
-        { label: 'Total Shots', valueA: teamA.topStats.totalShots, valueB: teamB.topStats.totalShots },
-        { label: 'Shots on Target', valueA: teamA.topStats.shotsOnTarget, valueB: teamB.topStats.shotsOnTarget },
-        { label: 'Possession', valueA: teamA.topStats.possession, valueB: teamB.topStats.possession, format: 'pct' },
-      ],
-    },
-    {
-      title: 'Passing',
-      icon: Navigation,
-      stats: [
-        { label: 'Accurate Passes', valueA: teamA.passing.accuratePasses, valueB: teamB.passing.accuratePasses },
-        { label: 'Pass Accuracy', valueA: teamA.passing.passAccuracy, valueB: teamB.passing.passAccuracy, format: 'pct' },
-        { label: 'Progressive Passes', valueA: teamA.passing.progressivePasses, valueB: teamB.passing.progressivePasses },
-      ],
-    },
-    {
-      title: 'Defense',
-      icon: Shield,
-      stats: [
-        { label: 'Interceptions', valueA: teamA.defense.interceptions, valueB: teamB.defense.interceptions },
-        { label: 'Tackles Won', valueA: teamA.defense.tacklesWon, valueB: teamB.defense.tacklesWon },
-        { label: 'Clearances', valueA: teamA.defense.clearances, valueB: teamB.defense.clearances },
-      ],
-    },
-  ];
+  const sections   = buildSections(teamA, teamB);
+  const activeRows = sections[activeSection] || [];
 
   return (
-    <div className="space-y-4 max-w-2xl mx-auto w-full">
-      {/* Team Header Bar */}
-      <div className="flex items-center justify-between px-4 py-3 bg-zinc-900/50 rounded-xl border border-white/5">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-[#006FEE]/20 border border-[#006FEE]/30 flex items-center justify-center">
-            <span className="text-[10px] font-bold text-[#006FEE]">{teamA.teamShort}</span>
+    <div className="w-full h-full flex flex-col gap-3 overflow-hidden">
+
+      {/* ── ROW 1: Team toggle (full width) ─────────────────── */}
+      <TeamToggle teamA={teamA} teamB={teamB} value={pitchTeam} onChange={setPitchTeam} />
+
+      {/* ── ROW 2: [Sidebar | Pitch 40%] | [Stats 60%] ──────── */}
+      <div className="flex-1 min-h-0 flex gap-3 overflow-hidden">
+
+        {/* ── PITCH COLUMN ≈ 40% (sidebar buttons + pitch) ──── */}
+        <div className="flex gap-2 overflow-hidden" style={{ flex: '0 0 40%', minWidth: 0 }}>
+
+          {/* Vertical analysis sidebar */}
+          <AnalysisSidebar active={analysis} onChange={setAnalysis} />
+
+          {/* Pitch fills remaining width */}
+          <div className="flex-1 min-w-0 min-h-0">
+            <PassingNetworkPitch
+              teamA={teamA}
+              teamB={teamB}
+              selectedTeam={pitchTeam}
+              analysisMode={analysis}
+            />
           </div>
-          <span className="text-sm font-bold text-white">{teamA.teamName}</span>
         </div>
-        <span className="text-[9px] text-zinc-600 font-bold tracking-widest uppercase">vs</span>
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-bold text-white">{teamB.teamName}</span>
-          <div className="w-8 h-8 rounded-full bg-[#f31260]/20 border border-[#f31260]/30 flex items-center justify-center">
-            <span className="text-[10px] font-bold text-[#f31260]">{teamB.teamShort}</span>
+
+        {/* ── STATS COLUMN ≈ 60% ───────────────────────────── */}
+        <div className="flex-1 min-w-0 flex flex-col gap-3 overflow-hidden">
+
+          {/* Scoreboard */}
+          <div className="bg-zinc-900/60 backdrop-blur-sm rounded-xl border border-white/5 px-4 py-2.5 flex-shrink-0">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-black"
+                  style={{ backgroundColor: '#006FEE22', border: '1px solid #006FEE44', color: '#006FEE' }}>
+                  {(teamA.teamName || 'A').substring(0, 3).toUpperCase()}
+                </div>
+                <span className="text-sm font-bold text-white">{teamA.teamName}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-4xl font-black text-white tabular-nums">{teamA.goals ?? 0}</span>
+                <span className="text-xl font-light text-zinc-700">–</span>
+                <span className="text-4xl font-black text-white tabular-nums">{teamB.goals ?? 0}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-white text-right">{teamB.teamName}</span>
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-black"
+                  style={{ backgroundColor: '#f3126022', border: '1px solid #f3126044', color: '#f31260' }}>
+                  {(teamB.teamName || 'B').substring(0, 3).toUpperCase()}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Stats card */}
+          <div className="flex-1 min-h-0 bg-zinc-900/60 backdrop-blur-sm rounded-xl border border-white/5 flex flex-col overflow-hidden">
+
+            {/* Section tabs */}
+            <div className="flex items-center border-b border-white/5 px-1 pt-1 gap-0.5 flex-shrink-0 overflow-x-auto no-scrollbar">
+              {STAT_SECTIONS.map(sec => {
+                const isActive = activeSection === sec;
+                return (
+                  <button
+                    key={sec}
+                    onClick={() => setActiveSection(sec)}
+                    className={`
+                      px-3 py-2 text-[10px] font-bold tracking-wider uppercase whitespace-nowrap
+                      rounded-t-lg transition-all duration-200 border-b-2 -mb-px
+                      ${isActive
+                        ? 'text-white border-primary bg-white/5'
+                        : 'text-zinc-600 border-transparent hover:text-zinc-400 hover:bg-white/3'
+                      }
+                    `}
+                  >
+                    {sec}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Team name headers for stat rows */}
+            <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 flex-shrink-0">
+              <span className="text-[11px] font-bold tracking-wider" style={{ color: '#006FEE' }}>
+                {(teamA.teamName || '').split(' ').slice(-1)[0]}
+              </span>
+              <span className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest">
+                {activeSection}
+              </span>
+              <span className="text-[11px] font-bold tracking-wider" style={{ color: '#f31260' }}>
+                {(teamB.teamName || '').split(' ').slice(-1)[0]}
+              </span>
+            </div>
+
+            {/* Scrollable rows */}
+            <div className="flex-1 overflow-y-auto no-scrollbar px-4 py-2">
+              {activeSection === 'Top Stats' && (
+                <PossessionBar
+                  valueA={teamA.topStats?.possession}
+                  valueB={teamB.topStats?.possession}
+                />
+              )}
+              {activeRows
+                .filter(row => activeSection !== 'Top Stats' || row.label !== 'Possession')
+                .map((row, i) => (
+                  <StatRow key={i} {...row} />
+                ))
+              }
+            </div>
           </div>
         </div>
       </div>
-
-      {/* Stat Groups */}
-      {statGroups.map((group) => (
-        <StatGroup key={group.title} {...group} />
-      ))}
     </div>
   );
 };

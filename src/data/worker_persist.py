@@ -244,6 +244,34 @@ class PersistenceWorker:
         try:
             ev = self.clean_nans(json.loads(msg['data']))
             
+            # Cálculo de xG si es tiro
+            xg_value = None
+            if ev.get('event_type_id') == 16:  # Shot
+                try:
+                    x = float(ev.get('location_x', 100))
+                    y = float(ev.get('location_y', 40))
+                    # Distancia
+                    distance = math.sqrt((120 - x)**2 + (40 - y)**2)
+                    
+                    # Ángulo visible
+                    a = math.sqrt((120 - x)**2 + (36 - y)**2)
+                    b = math.sqrt((120 - x)**2 + (44 - y)**2)
+                    c = 8
+                    if a > 0 and b > 0:
+                        val = (a**2 + b**2 - c**2) / (2 * a * b)
+                        val = max(-1, min(1, val))
+                        angle = math.acos(val) * 180 / math.pi
+                    else:
+                        angle = 0.0
+                    
+                    body_part = ev.get('body_part_name', 'Right Foot')
+                    play_pattern = ev.get('play_pattern_name', 'Regular Play')
+                    
+                    xg_value = self.bq_client.predict_xg(distance, angle, body_part, play_pattern)
+                    self._log(f"xG Predicho para tiro de {ev.get('player_name')}: {xg_value}")
+                except Exception as e:
+                    self._log(f"Error calculando xG: {e}", "ERROR")
+
             with self.db_engine.begin() as conn:
                 conn.execute(text("""
                     INSERT INTO match_events (
@@ -254,7 +282,7 @@ class PersistenceWorker:
                         location_x, location_y, 
                         end_location_x, end_location_y, end_location_z,
                         pass_length, pass_angle, pass_recipient_name, 
-                        pass_height_name, body_part_name
+                        pass_height_name, body_part_name, xg
                     )
                     VALUES (
                         :uuid, :idx, :mid, :ts, :per, :min, :sec,
@@ -264,7 +292,7 @@ class PersistenceWorker:
                         :x, :y, 
                         :end_x, :end_y, :end_z,
                         :p_len, :p_ang, :p_rec, 
-                        :p_height, :body
+                        :p_height, :body, :xg
                     )
                     ON CONFLICT (event_uuid) DO NOTHING
                 """), {
@@ -301,7 +329,8 @@ class PersistenceWorker:
                     "p_ang": ev.get('pass_angle'),
                     "p_rec": ev.get('pass_recipient_name'),
                     "p_height": ev.get('pass_height_name'),
-                    "body": ev.get('body_part_name')
+                    "body": ev.get('body_part_name'),
+                    "xg": xg_value
                 })
             
             # Log más detallado para debug

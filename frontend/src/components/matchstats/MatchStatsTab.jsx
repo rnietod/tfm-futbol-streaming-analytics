@@ -291,13 +291,17 @@ const MatchStatsTab = ({ targetPlayer }) => {
       )}
 
       {/* CONTENT AREA */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-6 no-scrollbar">
-        {viewMode === 'overview' ? (
+      {viewMode === 'overview' ? (
+        /* overview: no outer scroll — TeamComparison fills height with flex */
+        <div className="flex-1 min-h-0 overflow-hidden p-4">
           <TeamComparison teamA={teamA} teamB={teamB} />
-        ) : (
+        </div>
+      ) : (
+        /* player deep dive: scrollable */
+        <div className="flex-1 min-h-0 overflow-y-auto p-6 no-scrollbar">
           <PlayerDeepDive playerData={selectedPlayer} pitchLoading={pitchLoading} />
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
