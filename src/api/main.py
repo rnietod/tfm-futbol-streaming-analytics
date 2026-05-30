@@ -9,6 +9,7 @@ import csv
 from src.data.postgres_client import get_db_engine
 from sqlalchemy import text
 import subprocess
+import sys
 from fastapi import HTTPException
 
 # --- Player ID Mapping (opta <-> tracking) ---
@@ -29,11 +30,20 @@ except Exception as e:
 # --- Process Manager Registry ---
 process_registry = {}
 
-import sys
 
 SERVICES_CONFIG = {
     "streamlit_dashboard": {
-        "command": [sys.executable, "-m", "streamlit", "run", "src/streaming/dashboard.py", "--server.port", "8501", "--server.headless", "true"],
+        "command": [
+            sys.executable,
+            "-m",
+            "streamlit",
+            "run",
+            "src/streaming/dashboard.py",
+            "--server.port",
+            "8501",
+            "--server.headless",
+            "true"
+        ],
         "name": "Streamlit Dashboard"
     },
     "worker_persist": {
@@ -213,12 +223,12 @@ def get_player_profile(match_id: str, player_id: int, state: str = "Drawing"):
             if result:
                 return {
                     "stats": [
-                        { "metric": "GOALS", "value": int((result.pct_goals or 0) * 100), "fullMark": 100 },
-                        { "metric": "SHOTS", "value": int((result.pct_shots or 0) * 100), "fullMark": 100 },
-                        { "metric": "xG", "value": int((result.pct_xg or 0) * 100), "fullMark": 100 },
-                        { "metric": "CREA", "value": int((result.pct_creation or 0) * 100), "fullMark": 100 },
-                        { "metric": "PROG", "value": int((result.pct_progression or 0) * 100), "fullMark": 100 },
-                        { "metric": "DEF", "value": int((result.pct_defense or 0) * 100), "fullMark": 100 }
+                        {"metric": "GOALS", "value": int((result.pct_goals or 0) * 100), "fullMark": 100},
+                        {"metric": "SHOTS", "value": int((result.pct_shots or 0) * 100), "fullMark": 100},
+                        {"metric": "xG", "value": int((result.pct_xg or 0) * 100), "fullMark": 100},
+                        {"metric": "CREA", "value": int((result.pct_creation or 0) * 100), "fullMark": 100},
+                        {"metric": "PROG", "value": int((result.pct_progression or 0) * 100), "fullMark": 100},
+                        {"metric": "DEF", "value": int((result.pct_defense or 0) * 100), "fullMark": 100}
                     ]
                 }
             return {"stats": None}
@@ -226,7 +236,9 @@ def get_player_profile(match_id: str, player_id: int, state: str = "Drawing"):
         print(f"❌ Error obteniendo perfil de jugador: {e}")
         return {"error": "Error interno al consultar el perfil"}
 
+
 # --- Process Management Endpoints ---
+
 
 @app.get("/admin/services")
 def list_services():
@@ -240,39 +252,45 @@ def list_services():
             response[svc_id] = {"name": config["name"], "status": "stopped", "pid": None}
     return response
 
+
 @app.post("/admin/services/{service_id}/start")
 def start_service(service_id: str):
     if service_id not in SERVICES_CONFIG:
         raise HTTPException(status_code=404, detail="Service not found")
-    
+
     proc = process_registry.get(service_id)
     if proc and proc.poll() is None:
         return {"status": "already_running", "pid": proc.pid}
-    
+
     # Start process
     cmd = SERVICES_CONFIG[service_id]["command"]
     new_proc = subprocess.Popen(cmd, cwd=_BASE_DIR)
     process_registry[service_id] = new_proc
     return {"status": "started", "pid": new_proc.pid}
 
+
 @app.post("/admin/services/{service_id}/stop")
 def stop_service(service_id: str):
     if service_id not in SERVICES_CONFIG:
         raise HTTPException(status_code=404, detail="Service not found")
-    
+
     proc = process_registry.get(service_id)
     if not proc or proc.poll() is not None:
         return {"status": "already_stopped"}
-    
+
     # Stop process
     try:
         if os.name == 'nt':
-            subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(
+                ['taskkill', '/F', '/T', '/PID', str(proc.pid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
         else:
             proc.kill()
     except Exception as e:
         print(f"Error killing {service_id}: {e}")
-    
+
     process_registry[service_id] = None
     return {"status": "stopped"}
 
@@ -473,7 +491,8 @@ def get_match_stats(match_id: str):
                 SELECT
                     team_name,
                     SUM(CASE WHEN event_type_id = 16 THEN 1 ELSE 0 END) AS total_shots,
-                    SUM(CASE WHEN event_type_id = 16 AND (type_id = 88 OR outcome_id = 97) THEN 1 ELSE 0 END) AS shots_on_target,
+                    SUM(CASE WHEN event_type_id = 16 AND (type_id = 88 OR outcome_id = 97)
+                        THEN 1 ELSE 0 END) AS shots_on_target,
                     SUM(CASE WHEN event_type_id = 16 AND outcome_id = 97 THEN 1 ELSE 0 END) AS goals,
                     SUM(CASE WHEN event_type_id = 30 THEN 1 ELSE 0 END) AS total_passes,
                     SUM(CASE WHEN event_type_id = 30 AND outcome_id IS NULL THEN 1 ELSE 0 END) AS accurate_passes,
@@ -507,7 +526,7 @@ def get_match_stats(match_id: str):
                     SELECT team_name, player_name as from_name, player_id as from_player_id,
                            pass_recipient_name as to_name, COUNT(*) as count
                     FROM match_events
-                    WHERE match_id = :mid AND event_type_id = 30 AND outcome_id IS NULL 
+                    WHERE match_id = :mid AND event_type_id = 30 AND outcome_id IS NULL
                           AND pass_recipient_name IS NOT NULL AND player_name IS NOT NULL
                     GROUP BY team_name, player_name, player_id, pass_recipient_name
                 """), {"mid": match_id}).fetchall()
@@ -559,7 +578,7 @@ def get_match_stats(match_id: str):
                     "passNetwork": [],
                     "averagePositions": []
                 }
-                
+
             # Build a name→dorsal map from match_players for jersey numbers
             dorsal_map = {}
             try:
@@ -639,7 +658,8 @@ def get_match_stats(match_id: str):
                     e.player_id, e.player_name, e.team_name,
                     SUM(CASE WHEN event_type_id = 16 AND outcome_id = 97 THEN 1 ELSE 0 END) AS goals,
                     SUM(CASE WHEN event_type_id = 16 THEN 1 ELSE 0 END) AS shots,
-                    SUM(CASE WHEN event_type_id = 16 AND (type_id = 88 OR outcome_id = 97) THEN 1 ELSE 0 END) AS shots_on_target,
+                    SUM(CASE WHEN event_type_id = 16 AND (type_id = 88 OR outcome_id = 97)
+                        THEN 1 ELSE 0 END) AS shots_on_target,
                     SUM(CASE WHEN event_type_id = 30 THEN 1 ELSE 0 END) AS total_passes,
                     SUM(CASE WHEN event_type_id = 30 AND outcome_id IS NULL THEN 1 ELSE 0 END) AS passes_completed,
                     SUM(CASE WHEN event_type_id = 30 AND outcome_id IS NULL
