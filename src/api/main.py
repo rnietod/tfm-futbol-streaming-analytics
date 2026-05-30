@@ -212,6 +212,14 @@ def get_player_profile(match_id: str, player_id: int, state: str = "Drawing"):
     try:
         engine = get_db_engine()
         with engine.connect() as conn:
+            # Translate opta_player_id -> tracking_player_id using dim_player_mapping if possible
+            opta_str = str(player_id)
+            tracking_id = _OPTA_TO_TRACKING.get(opta_str, opta_str)
+            try:
+                pid_val = int(tracking_id)
+            except ValueError:
+                pid_val = player_id
+
             query = text("""
                 SELECT
                     pct_goals, pct_shots, pct_xg, pct_creation, pct_progression, pct_defense
@@ -219,7 +227,7 @@ def get_player_profile(match_id: str, player_id: int, state: str = "Drawing"):
                 WHERE tracking_player_id = :pid AND game_state = :state
                 LIMIT 1
             """)
-            result = conn.execute(query, {"pid": player_id, "state": state}).fetchone()
+            result = conn.execute(query, {"pid": pid_val, "state": state}).fetchone()
             if result:
                 return {
                     "stats": [
@@ -506,7 +514,16 @@ def get_match_stats(match_id: str):
                     SUM(CASE WHEN xg > 0.3 THEN 1 ELSE 0 END) AS big_chances,
                     SUM(CASE WHEN xg > 0.3 AND outcome_name != 'Goal' THEN 1 ELSE 0 END) AS big_chances_missed,
                     SUM(CASE WHEN event_type_id = 22 THEN 1 ELSE 0 END) AS fouls,
-                    SUM(CASE WHEN type_id = 61 THEN 1 ELSE 0 END) AS corners
+                    SUM(CASE WHEN type_id = 61 THEN 1 ELSE 0 END) AS corners,
+                    SUM(CASE WHEN event_type_id = 16 THEN (CASE WHEN type_name = 'Open Play' THEN COALESCE(xg, 0) ELSE 0 END) ELSE 0 END) AS xg_open_play,
+                    SUM(CASE WHEN event_type_id = 16 THEN (CASE WHEN type_name != 'Open Play' THEN COALESCE(xg, 0) ELSE 0 END) ELSE 0 END) AS xg_set_play,
+                    SUM(CASE WHEN event_type_id = 16 THEN (CASE WHEN type_name != 'Penalty' THEN COALESCE(xg, 0) ELSE 0 END) ELSE 0 END) AS xg_non_penalty,
+                    SUM(CASE WHEN event_type_id = 16 THEN (CASE WHEN outcome_name = 'Goal' THEN 0.85 WHEN outcome_name = 'Saved' THEN COALESCE(xg, 0) * 0.75 ELSE 0 END) ELSE 0 END) AS xg_on_target,
+                    SUM(CASE WHEN event_type_id = 16 AND outcome_name = 'Off T' THEN 1 ELSE 0 END) AS shots_off_target,
+                    SUM(CASE WHEN event_type_id = 16 AND outcome_name = 'Blocked' THEN 1 ELSE 0 END) AS shots_blocked,
+                    SUM(CASE WHEN event_type_id = 16 AND outcome_name = 'Post' THEN 1 ELSE 0 END) AS shots_woodwork,
+                    SUM(CASE WHEN event_type_id = 16 AND location_x >= 102 AND location_y >= 18 AND location_y <= 62 THEN 1 ELSE 0 END) AS shots_inside_box,
+                    SUM(CASE WHEN event_type_id = 16 AND (location_x < 102 OR location_y < 18 OR location_y > 62) THEN 1 ELSE 0 END) AS shots_outside_box
                 FROM match_events
                 WHERE match_id = :mid AND team_name IS NOT NULL
                 GROUP BY team_name
@@ -563,7 +580,16 @@ def get_match_stats(match_id: str):
                         "accuratePasses": ap,
                         "passAccuracy": pacc,
                         "fouls": int(r.fouls or 0),
-                        "corners": int(r.corners or 0)
+                        "corners": int(r.corners or 0),
+                        "xgOpenPlay": round(float(r.xg_open_play or 0), 2),
+                        "xgSetPlay": round(float(r.xg_set_play or 0), 2),
+                        "xgNonPenalty": round(float(r.xg_non_penalty or 0), 2),
+                        "xgOnTarget": round(float(r.xg_on_target or 0), 2),
+                        "shotsOffTarget": int(r.shots_off_target or 0),
+                        "shotsBlocked": int(r.shots_blocked or 0),
+                        "shotsWoodwork": int(r.shots_woodwork or 0),
+                        "shotsInsideBox": int(r.shots_inside_box or 0),
+                        "shotsOutsideBox": int(r.shots_outside_box or 0)
                     },
                     "passing": {
                         "accuratePasses": ap,
@@ -750,9 +776,36 @@ def get_match_stats(match_id: str):
                 team_b_data = teams_data[team_keys[1]]
                 team_b_data["teamShort"] = away_short
 
+            # Build a name→player_id map from match_players
+            player_id_map = {}
+            try:
+                mp_rows = conn.execute(text(
+                    "SELECT name, player_id FROM match_players WHERE match_id = :mid"
+                ), {"mid": match_id}).fetchall()
+                for mp in mp_rows:
+                    if mp.name and mp.player_id:
+                        player_id_map[mp.name.lower()] = str(mp.player_id)
+            except Exception:
+                pass
+
+            def find_player_id(full_name):
+                if not full_name:
+                    return None
+                fn_lower = full_name.lower()
+                if fn_lower in player_id_map:
+                    return player_id_map[fn_lower]
+                parts = fn_lower.split()
+                for last in reversed(parts):
+                    if len(last) < 3:
+                        continue
+                    for key, pid in player_id_map.items():
+                        if last in key or key.endswith(last):
+                            return pid
+                return None
+
             player_rows = conn.execute(text("""
                 SELECT
-                    e.player_id, e.player_name, e.team_name,
+                    e.player_name, e.team_name,
                     SUM(CASE WHEN event_type_id = 16 AND outcome_id = 97 THEN 1 ELSE 0 END) AS goals,
                     SUM(CASE WHEN event_type_id = 16 THEN 1 ELSE 0 END) AS shots,
                     SUM(CASE WHEN event_type_id = 16 AND (type_id = 88 OR outcome_id = 97)
@@ -768,24 +821,26 @@ def get_match_stats(match_id: str):
                     SUM(CASE WHEN event_type_id IN (30, 42, 43, 16, 14, 38, 6) THEN 1 ELSE 0 END) AS touches,
                     MAX(minute) AS last_minute
                 FROM match_events e
-                WHERE e.match_id = :mid AND e.player_id IS NOT NULL
-                GROUP BY e.player_id, e.player_name, e.team_name
+                WHERE e.match_id = :mid AND e.player_name IS NOT NULL
+                GROUP BY e.player_name, e.team_name
             """), {"mid": match_id}).fetchall()
 
             players = {}
             for r in player_rows:
-                pid = str(r.player_id)  # This is the opta_player_id
+                dn = r.player_name or "Unknown"
+                pid = find_player_id(dn)
+                if not pid:
+                    pid = str(hash(dn))
                 # Translate opta -> tracking to find roster info
                 tracking_id = _OPTA_TO_TRACKING.get(pid, pid)
                 ro = roster_by_tracking.get(tracking_id, {})
                 tp = int(r.total_passes or 0)
                 pc = int(r.passes_completed or 0)
                 pacc = round((pc / tp) * 100) if tp > 0 else 0
-                dn = ro.get("name") or r.player_name or "Unknown"
 
                 players[pid] = {
                     "info": {
-                        "id": pid, "name": r.player_name or dn, "shortName": dn,
+                        "id": pid, "name": r.player_name or dn, "shortName": ro.get("name") or dn,
                         "number": ro.get("number", 0), "position": ro.get("position", "?"),
                         "teamId": str(ro.get("team_id", "")), "teamName": r.team_name or "",
                     },
@@ -830,10 +885,37 @@ def get_match_shots(match_id: str):
             home_team = match_info.home_team_name or "HOME"
             away_team = match_info.away_team_name or "AWAY"
 
+            # Build a name→player_id map from match_players
+            player_id_map = {}
+            try:
+                mp_rows = conn.execute(text(
+                    "SELECT name, player_id FROM match_players WHERE match_id = :mid"
+                ), {"mid": match_id}).fetchall()
+                for mp in mp_rows:
+                    if mp.name and mp.player_id:
+                        player_id_map[mp.name.lower()] = str(mp.player_id)
+            except Exception:
+                pass
+
+            def find_player_id(full_name):
+                if not full_name:
+                    return None
+                fn_lower = full_name.lower()
+                if fn_lower in player_id_map:
+                    return player_id_map[fn_lower]
+                parts = fn_lower.split()
+                for last in reversed(parts):
+                    if len(last) < 3:
+                        continue
+                    for key, pid in player_id_map.items():
+                        if last in key or key.endswith(last):
+                            return pid
+                return None
+
             # 2. Obtener todos los tiros (event_type_id = 16)
             shot_rows = conn.execute(text("""
                 SELECT
-                    minute, player_name, team_name, xg, outcome_name, type_id, outcome_id,
+                    minute, player_id, player_name, team_name, xg, outcome_name, type_id, outcome_id,
                     location_x, location_y, end_location_y, end_location_z
                 FROM match_events
                 WHERE match_id = :mid AND event_type_id = 16
@@ -866,8 +948,12 @@ def get_match_shots(match_id: str):
                 else:
                     goal_y = 100.0 if not on_target else 50.0
 
+                db_pid = r.player_id
+                pid = str(db_pid) if db_pid else find_player_id(r.player_name)
+
                 shots.append({
                     "minute": int(r.minute or 0),
+                    "player_id": pid,
                     "player": r.player_name or "Unknown Player",
                     "team": r.team_name or "Unknown Team",
                     "xg": round(float(r.xg or 0.0), 3),
