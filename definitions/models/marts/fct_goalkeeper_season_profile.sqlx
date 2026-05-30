@@ -1,0 +1,43 @@
+config {
+  type: "table",
+  schema: "marts_football",
+  description: "Perfil exclusivo para porteros. Shot Stopping, Claims y Distribución.",
+  tags: ["marts", "goalkeeper"]
+}
+
+WITH 
+  gk_events AS (
+    SELECT * FROM ${ref("fct_events_enriched")}
+    WHERE COALESCE(player_position_desc, 'Unknown') LIKE '%Goalkeeper%'
+  ),
+  
+  gk_stats AS (
+    SELECT
+      player_id,
+      player_name,
+      season,
+      team_id,
+      COALESCE(game_state_label, 'Drawing') as game_state,
+      
+      -- Shot Stopping
+      SUM(CASE WHEN type_id = 15 THEN 1 ELSE 0 END) as saves,
+      SUM(CASE WHEN COALESCE(gk_diving_save, FALSE) OR COALESCE(gk_standing_save, FALSE) OR COALESCE(gk_stooping_save, FALSE) THEN 1 ELSE 0 END) as saves_reflex,
+      
+      -- Claims (Juego Aéreo)
+      SUM(CASE WHEN type_id = 10 AND COALESCE(outcome, 0) = 1 THEN 1 ELSE 0 END) as claims_successful, 
+
+      -- Distribución
+      SUM(CASE WHEN type_id = 1 THEN 1 ELSE 0 END) as passes_total,
+      SUM(CASE WHEN type_id = 1 AND COALESCE(is_long_ball, FALSE) THEN 1 ELSE 0 END) as passes_long,
+      SUM(CASE WHEN type_id = 1 AND NOT COALESCE(is_long_ball, FALSE) THEN 1 ELSE 0 END) as passes_short,
+      SUM(CASE WHEN type_id = 1 AND COALESCE(outcome, 0) = 1 THEN 1 ELSE 0 END) as passes_complete
+
+    FROM gk_events
+    GROUP BY 1, 2, 3, 4, 5
+  )
+
+SELECT 
+  *,
+  SAFE_DIVIDE(passes_long, passes_total) as long_pass_share,
+  SAFE_DIVIDE(passes_complete, passes_total) as distribution_accuracy
+FROM gk_stats

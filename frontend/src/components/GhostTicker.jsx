@@ -1,20 +1,19 @@
 import React, { useState, useMemo } from 'react';
 import { TrendingUp, TrendingDown, Minus, Users, Shield } from 'lucide-react';
 
-const GhostTicker = ({ players, onPlayerClick }) => {
+const GhostTicker = ({ players, onPlayerClick, homeTeam, awayTeam, homeTeamId }) => {
   const [filter, setFilter] = useState('all'); // 'all', 'home', 'away'
   const [isPaused, setIsPaused] = useState(false);
 
   // 1. Filtrado de jugadores
   const filteredPlayers = useMemo(() => {
     if (filter === 'all') return players;
-    // Ajusta la lógica de team_id según tus datos reales (ej: 275 vs 262)
     return players.filter(p => {
-        if (filter === 'home') return p.team_id === 275; 
-        if (filter === 'away') return p.team_id !== 275; 
+        if (filter === 'home') return p.team_id === homeTeamId; 
+        if (filter === 'away') return p.team_id !== homeTeamId; 
         return true;
     });
-  }, [players, filter]);
+  }, [players, filter, homeTeamId]);
 
   // 2. Lista infinita
   // Duplicamos x10 para asegurar que cubra pantallas grandes
@@ -52,16 +51,16 @@ const GhostTicker = ({ players, onPlayerClick }) => {
 
         <div className="flex bg-zinc-900 rounded-lg p-0.5 border border-white/5">
             <button 
-                onClick={() => setFilter('home')}
+                onClick={() => setFilter(filter === 'home' ? 'all' : 'home')}
                 className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all flex items-center gap-1 ${filter === 'home' ? 'bg-zinc-700 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
             >
-                <Shield size={10} /> HOME
+                <Shield size={10} /> {homeTeam ? homeTeam.substring(0, 3).toUpperCase() : 'HOME'}
             </button>
             <button 
-                onClick={() => setFilter('away')}
+                onClick={() => setFilter(filter === 'away' ? 'all' : 'away')}
                 className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all flex items-center gap-1 ${filter === 'away' ? 'bg-zinc-700 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
             >
-                <Users size={10} /> AWAY
+                <Users size={10} /> {awayTeam ? awayTeam.substring(0, 3).toUpperCase() : 'AWAY'}
             </button>
         </div>
       </div>

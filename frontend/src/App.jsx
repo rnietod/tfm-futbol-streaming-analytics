@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Chip, Slider, Button } from "@nextui-org/react";
+import { Chip, Slider, Button, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Switch } from "@nextui-org/react";
 import { 
   Wifi, WifiOff, Activity, Play, Pause, SkipBack, 
-  FastForward, Radio, BrainCircuit, TrendingUp, Users, LayoutGrid
+  FastForward, Radio, BrainCircuit, TrendingUp, Users, LayoutGrid, BarChart3
 } from 'lucide-react';
 import FootballPitch from './components/FootballPitch';
 import GhostTicker from './components/GhostTicker';
 import DynamicBackground from './components/DynamicBackground';
 import PlayerGlassCard from './components/PlayerGlassCard';
 import TactixLogo from './components/TactixLogo';
+import MatchStatsTab from './components/matchstats/MatchStatsTab';
 import { useMatchHistory } from './hooks/useMatchHistory';
 
 // --- UTILIDADES ---
@@ -218,6 +219,7 @@ const PlaybackControls = ({ currentTime, isLive, isPlaying, currentFrame, maxFra
 
 // --- APP PRINCIPAL ---
 function App() {
+  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'matchstats' | 'vision'
   const [isLive, setIsLive] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [sliderValue, setSliderValue] = useState(0); 
@@ -227,9 +229,52 @@ function App() {
   const [latestEvent, setLatestEvent] = useState(null);
   const [status, setStatus] = useState("OFFLINE");
   const [playerMap, setPlayerMap] = useState({});
+  const [homeTeam, setHomeTeam] = useState('');
+  const [awayTeam, setAwayTeam] = useState('');
+  const [teamsMap, setTeamsMap] = useState({});
   const ws = useRef(null);
   const lastEventIndex = useRef(-1);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
+  const [servicesStatus, setServicesStatus] = useState({});
+  const [statsTargetPlayer, setStatsTargetPlayer] = useState(null);
+
+  const handleViewPlayerStats = (player) => {
+      setSelectedPlayer(null); // Cerrar modal
+      setStatsTargetPlayer({ name: player.name, number: player.number }); 
+      setActiveTab('matchstats');
+  };
+
+  // --- POLL SERVICES STATUS ---
+  useEffect(() => {
+      const fetchServices = async () => {
+          try {
+              const res = await fetch('http://127.0.0.1:8000/admin/services');
+              if (res.ok) {
+                  const data = await res.json();
+                  setServicesStatus(data);
+              }
+          } catch (e) {
+              console.error("Error fetching services:", e);
+          }
+      };
+      fetchServices();
+      const interval = setInterval(fetchServices, 5000);
+      return () => clearInterval(interval);
+  }, []);
+
+  const handleToggleService = async (serviceId, currentStatus) => {
+      const action = currentStatus === 'running' ? 'stop' : 'start';
+      try {
+          // Optimistic update
+          setServicesStatus(prev => ({
+              ...prev,
+              [serviceId]: { ...prev[serviceId], status: action === 'start' ? 'running' : 'stopped' }
+          }));
+          await fetch(`http://127.0.0.1:8000/admin/services/${serviceId}/${action}`, { method: 'POST' });
+      } catch (e) {
+          console.error(`Error toggling service ${serviceId}:`, e);
+      }
+  };
 
   const handleSelectPlayer = (playerData) => {
       setSelectedPlayer(playerData);
@@ -345,6 +390,10 @@ function App() {
             const map = {};
             players.forEach(p => map[String(p.player_id)] = { number: p.number, name: p.short_name, team_id: p.team_id });
             setPlayerMap(map);
+            // Extract team names from API response
+            if (data.homeName) setHomeTeam(data.homeName);
+            if (data.awayName) setAwayTeam(data.awayName);
+            if (data.teams) setTeamsMap(data.teams);
           })
         .catch(e => console.warn("Error meta:",e));
     };
@@ -353,15 +402,46 @@ function App() {
     return () => clearInterval(intervalId);
   }, []);
 
+  // Compute live score from events (goal = event_type_id 16 + outcome_id 97)
+  const { homeGoals, awayGoals } = useMemo(() => {
+    let home = 0, away = 0;
+    if (!homeTeam && !awayTeam) return { homeGoals: 0, awayGoals: 0 };
+
+    eventsList.forEach(evt => {
+      if (evt.event_type_id === 16 && evt.outcome_id === 97) {
+        const evtTeam = evt.team_name || '';
+        const hl = homeTeam.toLowerCase();
+        const al = awayTeam.toLowerCase();
+        const el = evtTeam.toLowerCase();
+        if (hl && (el.includes(hl) || hl.includes(el) || el.startsWith(hl.substring(0, 3)))) {
+          home++;
+        } else if (al && (el.includes(al) || al.includes(el) || el.startsWith(al.substring(0, 3)))) {
+          away++;
+        }
+      }
+    });
+    return { homeGoals: home, awayGoals: away };
+  }, [eventsList, homeTeam, awayTeam]);
+
   // Lista de Jugadores para el Ticker (Derivada del mapa)
   const tickerPlayers = useMemo(() => {
-    return Object.values(playerMap).map((p, i) => ({
-        id: i,
-        name: p.name,
-        number: p.number,
-        deviation: (Math.random() * 5 - 2).toFixed(1) // Placeholder dinámico
-    }));
-  }, [playerMap]);
+    return Object.keys(playerMap).map((pid, i) => {
+        const p = playerMap[pid];
+        return {
+            id: pid,
+            name: p.name,
+            number: p.number,
+            team_id: String(p.team_id),
+            team_name: teamsMap[String(p.team_id)] || 'UNKNOWN',
+            deviation: (Math.random() * 5 - 2).toFixed(1) // Placeholder dinámico
+        };
+    });
+  }, [playerMap, teamsMap]);
+
+  const homeTeamId = useMemo(() => {
+    if (!teamsMap || !homeTeam) return null;
+    return Object.keys(teamsMap).find(id => teamsMap[id] === homeTeam) || Object.keys(teamsMap)[0];
+  }, [teamsMap, homeTeam]);
 
 
   // --- RENDER FINAL ---
@@ -379,79 +459,151 @@ return (
               TACTIX <span className="text-primary font-mono text-xs align-top">LIVE</span>
             </span>
           </div>
-          <div className="flex gap-2">
-             <button className="px-4 py-1.5 rounded-full text-[10px] font-bold tracking-wide bg-white/5 text-white border border-white/5 hover:bg-white/10 transition-colors flex items-center gap-2">
+          <div className="flex gap-1 bg-zinc-900/60 rounded-full p-0.5 border border-white/5">
+             <button
+                onClick={() => setActiveTab('dashboard')}
+                className={`px-4 py-1.5 rounded-full text-[10px] font-bold tracking-wide transition-all duration-300 flex items-center gap-2 ${
+                  activeTab === 'dashboard'
+                    ? 'bg-white/10 text-white border border-white/10 shadow-lg'
+                    : 'text-zinc-500 hover:text-zinc-300 border border-transparent'
+                }`}
+             >
                 <LayoutGrid size={12} /> DASHBOARD
              </button>
-             <button className="px-4 py-1.5 rounded-full text-[10px] font-bold tracking-wide text-zinc-400 hover:text-white transition-colors flex items-center gap-2">
+             <button
+                onClick={() => setActiveTab('matchstats')}
+                className={`px-4 py-1.5 rounded-full text-[10px] font-bold tracking-wide transition-all duration-300 flex items-center gap-2 ${
+                  activeTab === 'matchstats'
+                    ? 'bg-primary/20 text-primary border border-primary/20 shadow-[0_0_15px_rgba(0,111,238,0.15)]'
+                    : 'text-zinc-500 hover:text-zinc-300 border border-transparent'
+                }`}
+             >
+                <BarChart3 size={12} /> MATCH STATS
+             </button>
+             <button
+                onClick={() => setActiveTab('vision')}
+                className={`px-4 py-1.5 rounded-full text-[10px] font-bold tracking-wide transition-all duration-300 flex items-center gap-2 ${
+                  activeTab === 'vision'
+                    ? 'bg-white/10 text-white border border-white/10 shadow-lg'
+                    : 'text-zinc-500 hover:text-zinc-300 border border-transparent'
+                }`}
+             >
                 <BrainCircuit size={12} /> GEMINI VISION
              </button>
           </div>
           <div className="flex items-center gap-3">
              {isLoadingHistory && <Chip color="warning" variant="dot" size="sm" className="bg-transparent border-none text-warning">BUFFERING</Chip>}
-             <div className={`flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 border ${status === 'ONLINE' ? 'border-success/20' : 'border-danger/20'}`}>
-                {status === 'ONLINE' ? <Wifi size={12} className="text-success" /> : <WifiOff size={12} className="text-danger" />}
-                <span className={`font-mono text-[10px] font-bold ${status === 'ONLINE' ? 'text-success' : 'text-danger'}`}>{status}</span>
-             </div>
+             <Dropdown placement="bottom-end">
+                <DropdownTrigger>
+                   <div className={`flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 border cursor-pointer hover:bg-black/60 transition-colors ${status === 'ONLINE' ? 'border-success/20' : 'border-danger/20'}`}>
+                      {status === 'ONLINE' ? <Wifi size={12} className="text-success" /> : <WifiOff size={12} className="text-danger" />}
+                      <span className={`font-mono text-[10px] font-bold ${status === 'ONLINE' ? 'text-success' : 'text-danger'}`}>{status}</span>
+                   </div>
+                </DropdownTrigger>
+                <DropdownMenu aria-label="Dev Services" className="bg-zinc-950 border border-white/10 rounded-xl w-64 shadow-2xl">
+                   <DropdownItem key="header" className="h-10 gap-2 pointer-events-none" textValue="Dev Services Header">
+                       <p className="font-bold text-[10px] text-zinc-400 uppercase tracking-widest">Microservices Control</p>
+                   </DropdownItem>
+                   {Object.entries(servicesStatus).map(([id, service]) => (
+                       <DropdownItem key={id} textValue={service.name} className="py-3" closeOnSelect={false}>
+                           <div className="flex items-center justify-between w-full">
+                               <div className="flex items-center gap-3">
+                                   <div className={`w-2 h-2 rounded-full ${service.status === 'running' ? 'bg-success shadow-[0_0_8px_rgba(23,201,100,0.8)]' : 'bg-zinc-600'}`} />
+                                   <span className="text-xs font-semibold text-white/90">{service.name}</span>
+                               </div>
+                               <Switch 
+                                   size="sm" 
+                                   color="success" 
+                                   isSelected={service.status === 'running'} 
+                                   onValueChange={() => handleToggleService(id, service.status)}
+                               />
+                           </div>
+                       </DropdownItem>
+                   ))}
+                </DropdownMenu>
+             </Dropdown>
           </div>
         </header>
 
-        {/* GHOST TICKER */}
-        <GhostTicker 
-            players={tickerPlayers} 
-            onPlayerClick={handleSelectPlayer} 
-        />
+        {/* TAB: DASHBOARD */}
+        {activeTab === 'dashboard' && (
+          <>
+            {/* GHOST TICKER */}
+            <GhostTicker 
+                players={tickerPlayers} 
+                onPlayerClick={handleSelectPlayer} 
+                homeTeam={homeTeam}
+                awayTeam={awayTeam}
+                homeTeamId={homeTeamId}
+            />
 
-        {/* MAIN LAYOUT */}
-        <main className="flex-1 min-h-0 grid grid-cols-12 gap-0 relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-900/10 via-zinc-950/30 to-zinc-950/50">
-            {/* IZQUIERDA: FEED */}
-            <aside className="col-span-3 lg:col-span-2 min-h-0 flex flex-col z-20 shadow-[5px_0_30px_rgba(0,0,0,0.3)]">
-                <EventFeed events={eventsList} />
-            </aside>
+            {/* MAIN LAYOUT */}
+            <main className="flex-1 min-h-0 grid grid-cols-12 gap-0 relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-900/10 via-zinc-950/30 to-zinc-950/50">
+                {/* IZQUIERDA: FEED */}
+                <aside className="col-span-3 lg:col-span-2 min-h-0 flex flex-col z-20 shadow-[5px_0_30px_rgba(0,0,0,0.3)]">
+                    <EventFeed events={eventsList} />
+                </aside>
 
-            {/* DERECHA: CAMPO + CONTROLES */}
-            <section className="col-span-9 lg:col-span-10 relative flex flex-col p-4 overflow-hidden">
-                
-                {/* Scoreboard */}
-                <div className="absolute top-4 left-0 right-0 z-30 flex justify-center w-full pointer-events-none">
-                    <div className="bg-black/40 backdrop-blur-md px-8 py-2 rounded-2xl border border-white/5 shadow-2xl flex items-center gap-8">
-                        <span className="text-sm font-bold text-zinc-400 tracking-wider">LIV</span>
-                        <div className="text-3xl font-mono font-bold text-white tracking-widest drop-shadow-lg">
-                        2<span className="text-zinc-600 mx-3 text-2xl">:</span>1
+                {/* DERECHA: CAMPO + CONTROLES */}
+                <section className="col-span-9 lg:col-span-10 relative flex flex-col p-4 overflow-hidden">
+                    
+                    {/* Scoreboard */}
+                    <div className="absolute top-4 left-0 right-0 z-30 flex justify-center w-full pointer-events-none">
+                        <div className="bg-black/40 backdrop-blur-md px-8 py-2 rounded-2xl border border-white/5 shadow-2xl flex items-center gap-8">
+                            <span className="text-sm font-bold text-zinc-400 tracking-wider">{homeTeam ? homeTeam.substring(0, 3).toUpperCase() : 'HOME'}</span>
+                            <div className="text-3xl font-mono font-bold text-white tracking-widest drop-shadow-lg">
+                            {homeGoals}<span className="text-zinc-600 mx-3 text-2xl">:</span>{awayGoals}
+                            </div>
+                            <span className="text-sm font-bold text-zinc-400 tracking-wider">{awayTeam ? awayTeam.substring(0, 3).toUpperCase() : 'AWAY'}</span>
                         </div>
-                        <span className="text-sm font-bold text-zinc-400 tracking-wider">MCI</span>
                     </div>
-                </div>
 
-                {/* Área del Campo */}
-                <div className="flex-1 flex items-center justify-center relative min-h-0">
-                     <div className="scale-[0.8] lg:scale-[0.9] xl:scale-100 transition-transform duration-500">
-                        <FootballPitch 
-                            matchState={displayData} 
-                            latestEvent={latestEvent}
-                            playerMap={playerMap} 
-                            width={1150}   
-                            height={720}
-                            onPlayerClick={handleSelectPlayer}
+                    {/* Área del Campo */}
+                    <div className="flex-1 flex items-center justify-center relative min-h-0">
+                         <div className="scale-[0.8] lg:scale-[0.9] xl:scale-100 transition-transform duration-500">
+                            <FootballPitch 
+                                matchState={displayData} 
+                                latestEvent={latestEvent}
+                                playerMap={playerMap} 
+                                width={1150}   
+                                height={720}
+                                onPlayerClick={handleSelectPlayer}
+                            />
+                         </div>
+                    </div>
+
+                    {/* FOOTER CONTROLS */}
+                    <div className="w-full relative z-20 pb-2">
+                        <PlaybackControls 
+                            currentTime={formatTime(displayData?.timestamp)} 
+                            isLive={isLive}
+                            isPlaying={isPlaying} 
+                            currentFrame={sliderValue} 
+                            maxFrame={maxFrame} 
+                            onSeek={handleSeek}
+                            onToggleLive={handleGoLive}
+                            onTogglePlay={handleTogglePlay}
                         />
-                     </div>
-                </div>
+                    </div>
+                </section>
+            </main>
+          </>
+        )}
 
-                {/* FOOTER CONTROLS (Ahora vive dentro de esta columna) */}
-                <div className="w-full relative z-20 pb-2">
-                    <PlaybackControls 
-                        currentTime={formatTime(displayData?.timestamp)} 
-                        isLive={isLive}
-                        isPlaying={isPlaying} 
-                        currentFrame={sliderValue} 
-                        maxFrame={maxFrame} 
-                        onSeek={handleSeek}
-                        onToggleLive={handleGoLive}
-                        onTogglePlay={handleTogglePlay}
-                    />
-                </div>
-            </section>
-        </main>
+        {/* TAB: MATCH STATS HUB */}
+        {activeTab === 'matchstats' && (
+          <MatchStatsTab targetPlayer={statsTargetPlayer} />
+        )}
+
+        {/* TAB: GEMINI VISION (placeholder) */}
+        {activeTab === 'vision' && (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center space-y-3">
+              <BrainCircuit size={48} className="text-zinc-700 mx-auto" />
+              <p className="text-zinc-600 text-sm font-medium">Gemini Vision — Coming Soon</p>
+            </div>
+          </div>
+        )}
 
         {/* LAYER 2: MODAL OVERLAY (Player Card) */}
         {selectedPlayer && (
@@ -463,7 +615,11 @@ return (
                 <div className="z-10 animate-in zoom-in-95 duration-300 relative">
                     <PlayerGlassCard 
                         player={selectedPlayer} 
+                        homeGoals={homeGoals}
+                        awayGoals={awayGoals}
+                        homeTeamId={homeTeamId}
                         onClose={() => setSelectedPlayer(null)} 
+                        onViewStats={() => handleViewPlayerStats(selectedPlayer)}
                     />
                 </div>
             </div>
