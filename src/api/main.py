@@ -726,6 +726,139 @@ def get_match_stats(match_id: str):
         return {"error": str(e)}
 
 
+@app.get("/match/{match_id}/shots")
+def get_match_shots(match_id: str):
+    """
+    Obtiene los tiros del partido para el Shot Map.
+    """
+    engine = get_db_engine()
+    try:
+        with engine.connect() as conn:
+            # 1. Obtener nombres de equipos
+            match_info = conn.execute(text(
+                "SELECT home_team_name, away_team_name FROM matches WHERE match_id = :mid"
+            ), {"mid": match_id}).fetchone()
+
+            if not match_info:
+                return {"error": "Match not found"}
+
+            home_team = match_info.home_team_name or "HOME"
+            away_team = match_info.away_team_name or "AWAY"
+
+            # 2. Obtener todos los tiros (event_type_id = 16)
+            shot_rows = conn.execute(text("""
+                SELECT
+                    minute, player_name, team_name, xg, outcome_name, type_id, outcome_id,
+                    location_x, location_y, end_location_y, end_location_z
+                FROM match_events
+                WHERE match_id = :mid AND event_type_id = 16
+                ORDER BY minute, second
+            """), {"mid": match_id}).fetchall()
+
+            shots = []
+            for r in shot_rows:
+                # Determinar si es gol o a puerta
+                is_goal = (r.outcome_id == 97 or r.outcome_name == 'Goal')
+                on_target = (
+                    r.outcome_id == 97 or
+                    r.type_id == 88 or
+                    r.outcome_name in ('Goal', 'Saved', 'Post')
+                )
+
+                # Calcular goalX (end_location_y de 36 a 44)
+                ey = r.end_location_y
+                if ey is not None:
+                    # mapear de [36, 44] a [0, 100]
+                    goal_x = max(0.0, min(100.0, ((float(ey) - 36.0) / 8.0) * 100.0))
+                else:
+                    goal_x = 50.0
+
+                # Calcular goalY (end_location_z de 0 a 2.4)
+                ez = r.end_location_z
+                if ez is not None:
+                    # mapear de [0, 2.4] a [100, 0] (0 arriba en la barra, 100 abajo en el suelo)
+                    goal_y = max(0.0, min(100.0, ((2.4 - float(ez)) / 2.4) * 100.0))
+                else:
+                    goal_y = 100.0 if not on_target else 50.0
+
+                shots.append({
+                    "minute": int(r.minute or 0),
+                    "player": r.player_name or "Unknown Player",
+                    "team": r.team_name or "Unknown Team",
+                    "xg": round(float(r.xg or 0.0), 3),
+                    "outcome": r.outcome_name or "Shot",
+                    "isGoal": bool(is_goal),
+                    "onTarget": bool(on_target),
+                    "pitchX": round(float(r.location_x or 0.0), 1),
+                    "pitchY": round(float(r.location_y or 0.0), 1),
+                    "goalX": round(goal_x, 1),
+                    "goalY": round(goal_y, 1)
+                })
+
+            return clean_nans({
+                "home": home_team,
+                "away": away_team,
+                "shots": shots
+            })
+    except Exception as e:
+        print(f"❌ Error fetching match shots: {e}")
+        return {"error": str(e)}
+
+
+@app.get("/match/{match_id}/momentum")
+def get_match_momentum(match_id: str):
+    """
+    Obtiene los datos de momentum minuto a minuto.
+    """
+    engine = get_db_engine()
+    try:
+        with engine.connect() as conn:
+            # 1. Obtener nombres de equipos
+            match_info = conn.execute(text(
+                "SELECT home_team_name, away_team_name FROM matches WHERE match_id = :mid"
+            ), {"mid": match_id}).fetchone()
+
+            if not match_info:
+                return {"error": "Match not found"}
+
+            home_team = match_info.home_team_name or "HOME"
+            away_team = match_info.away_team_name or "AWAY"
+
+            # 2. Calcular pases en campo rival por minuto
+            momentum_rows = conn.execute(text("""
+                SELECT
+                    minute,
+                    SUM(CASE WHEN team_name = :home AND location_x > 60 THEN 1 ELSE 0 END) AS home_val,
+                    SUM(CASE WHEN team_name = :away AND location_x > 60 THEN 1 ELSE 0 END) AS away_val
+                FROM match_events
+                WHERE match_id = :mid AND event_type_id = 30 AND outcome_id IS NULL
+                GROUP BY minute
+                ORDER BY minute
+            """), {"mid": match_id, "home": home_team, "away": away_team}).fetchall()
+
+            # Rellenar todos los minutos del 1 al 90 (o al máximo minuto jugado)
+            max_minute = max([int(r.minute or 0) for r in momentum_rows] + [90])
+            minute_map = {int(r.minute): r for r in momentum_rows if r.minute is not None}
+
+            data = []
+            for m in range(1, max_minute + 1):
+                row = minute_map.get(m)
+                data.append({
+                    "minute": m,
+                    "home": int(row.home_val or 0) if row else 0,
+                    "away": int(row.away_val or 0) if row else 0
+                })
+
+            return clean_nans({
+                "home": home_team,
+                "away": away_team,
+                "data": data
+            })
+    except Exception as e:
+        print(f"❌ Error fetching match momentum: {e}")
+        return {"error": str(e)}
+
+
 @app.get("/match/{match_id}/player/{player_id}/pitch")
 def get_player_pitch_data(match_id: str, player_id: str):
     """

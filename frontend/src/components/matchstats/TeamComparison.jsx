@@ -25,31 +25,39 @@ const ANALYSES = [
 ];
 
 // Vertical icon+label buttons on the left of the pitch
-const AnalysisSidebar = ({ active, onChange }) => (
-  <div className="flex flex-col gap-1.5 p-1 bg-zinc-950/70 rounded-xl border border-white/5 items-center">
-    {ANALYSES.map(({ id, label, icon: Icon }) => {
-      const isActive = active === id;
-      return (
-        <button
-          key={id}
-          onClick={() => onChange(id)}
-          title={label}
-          className={`
-            w-full flex flex-col items-center gap-1 py-2.5 px-1 rounded-lg
-            transition-all duration-200 text-[9px] font-bold uppercase tracking-wider
-            ${isActive
-              ? 'bg-white/10 text-white border border-white/15'
-              : 'text-zinc-600 hover:text-zinc-400 border border-transparent hover:bg-white/5'
-            }
-          `}
-        >
-          <Icon size={14} />
-          <span style={{ writingMode: 'horizontal-tb' }}>{label}</span>
-        </button>
-      );
-    })}
-  </div>
-);
+const AnalysisSidebar = ({ active, onChange, selectedTeam }) => {
+  const teamColor = selectedTeam === 'teamA' ? '#006FEE' : '#f31260';
+  return (
+    <div className="w-16 flex-shrink-0 flex flex-col gap-1.5 p-1 bg-zinc-900/80 backdrop-blur-md rounded-xl border border-white/5 items-center z-10 shadow-lg">
+      {ANALYSES.map(({ id, label, icon: Icon }) => {
+        const isActive = active === id;
+        return (
+          <button
+            key={id}
+            onClick={() => onChange(id)}
+            title={label}
+            className={`
+              w-full flex flex-col items-center gap-1 py-2.5 px-1 rounded-lg border
+              transition-all duration-300 text-[9px] font-bold uppercase tracking-wider
+              ${isActive
+                ? 'text-white shadow-lg'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5 border-transparent'
+              }
+            `}
+            style={isActive ? {
+              backgroundColor: `color-mix(in srgb, ${teamColor} 20%, #18181b)`,
+              borderColor: `color-mix(in srgb, ${teamColor} 40%, transparent)`,
+              boxShadow: `0 0 15px color-mix(in srgb, ${teamColor} 20%, transparent)`,
+            } : {}}
+          >
+            <Icon size={14} />
+            <span style={{ writingMode: 'horizontal-tb' }}>{label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+};
 
 
 
@@ -199,7 +207,7 @@ const TeamComparison = ({ teamA, teamB, selectedTeam }) => {
         <div className="flex gap-2 overflow-hidden" style={{ flex: '0 0 40%', minWidth: 0 }}>
 
           {/* Vertical analysis sidebar */}
-          <AnalysisSidebar active={analysis} onChange={setAnalysis} />
+          <AnalysisSidebar active={analysis} onChange={setAnalysis} selectedTeam={selectedTeam} />
 
           {/* Pitch fills remaining width */}
           <div className="flex-1 min-w-0 min-h-0">

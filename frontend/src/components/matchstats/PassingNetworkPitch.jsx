@@ -114,8 +114,8 @@ const PassingNetworkPitch = ({ teamA, teamB, selectedTeam, analysisMode = 'passi
                 );
               })}
 
-              {scaledPositions.map(player => (
-                <g key={`node-${player.player_id}`}>
+              {scaledPositions.map((player, idx) => (
+                <g key={`node-${player.player_id || player.name || idx}`}>
                   <circle cx={player.svgX} cy={player.svgY} r="5" fill={teamColor} fillOpacity="0.12" />
                   <circle cx={player.svgX} cy={player.svgY} r="3.8"
                     fill="rgba(0,0,0,0.88)" stroke={teamColor} strokeWidth="0.65" />
