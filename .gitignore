@@ -15,3 +15,8 @@ web-client/.env
 web-client/.env.local
 web-client/.DS_Store
 web-client/coverage
+
+# ==========================
+# DESIGN REFERENCE (TFM)
+# ==========================
+TFM/
