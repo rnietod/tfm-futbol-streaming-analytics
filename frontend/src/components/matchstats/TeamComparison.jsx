@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import { Network, Target, Thermometer } from 'lucide-react';
 import PassingNetworkPitch from './PassingNetworkPitch';
+import ShotMapViz from './ShotMapViz';
+import MomentumChart from './MomentumChart';
+import AccuratePassesViz from './AccuratePassesViz';
+import { useShotMap, useMomentum } from '../../hooks/useMatchStats';
 
 // ============================================================
 // TEAM COMPARISON — Desktop-first layout
@@ -82,17 +86,25 @@ const PossessionBar = ({ valueA, valueB }) => {
   const pctA = (a / tot) * 100;
   const pctB = (b / tot) * 100;
   return (
-    <div className="mb-3">
-      <p className="text-[9px] font-bold tracking-widest text-zinc-500 uppercase text-center mb-1.5">Possession</p>
-      <div className="w-full h-5 flex rounded-lg overflow-hidden gap-px">
-        <div className="h-full flex items-center justify-start px-2 transition-all duration-700 rounded-l-lg"
-          style={{ width: `${pctA}%`, backgroundColor: '#006FEE' }}>
-          <span className="text-white font-bold text-[10px]">{Math.round(pctA)}%</span>
+    <div className="flex flex-col gap-1.5 py-1.5 mb-1">
+      <div className="flex justify-between items-center text-[11px] font-semibold text-zinc-500 uppercase tracking-wide">
+        <div
+          className="min-w-[44px] h-[26px] flex items-center justify-center rounded-lg bg-zinc-950/80 border border-white/5 text-[11px] font-medium tabular-nums"
+          style={{ fontFamily: "'JetBrains Mono', 'Fira Mono', monospace", color: '#006FEE' }}
+        >
+          {Math.round(pctA)}%
         </div>
-        <div className="h-full flex items-center justify-end px-2 transition-all duration-700 rounded-r-lg"
-          style={{ width: `${pctB}%`, backgroundColor: '#f31260' }}>
-          <span className="text-white font-bold text-[10px]">{Math.round(pctB)}%</span>
+        <span className="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Possession</span>
+        <div
+          className="min-w-[44px] h-[26px] flex items-center justify-center rounded-lg bg-zinc-950/80 border border-white/5 text-[11px] font-medium tabular-nums"
+          style={{ fontFamily: "'JetBrains Mono', 'Fira Mono', monospace", color: '#f31260' }}
+        >
+          {Math.round(pctB)}%
         </div>
+      </div>
+      <div className="w-full h-5 rounded-lg overflow-hidden flex border border-white/5 bg-zinc-950/60">
+        <div className="h-full bg-[#006FEE] transition-all duration-1000" style={{ width: `${pctA}%` }} />
+        <div className="h-full bg-[#f31260] transition-all duration-1000" style={{ width: `${pctB}%` }} />
       </div>
     </div>
   );
@@ -102,8 +114,7 @@ const PossessionBar = ({ valueA, valueB }) => {
 const StatRow = ({ label, valueA, valueB, format = 'number' }) => {
   const numA  = parseFloat(valueA) || 0;
   const numB  = parseFloat(valueB) || 0;
-  const aWins = numA > numB;
-  const bWins = numB > numA;
+  const maxVal = Math.max(numA, numB, 1);
 
   const fmt = (v) => {
     if (format === 'decimal') return parseFloat(v || 0).toFixed(2);
@@ -111,21 +122,41 @@ const StatRow = ({ label, valueA, valueB, format = 'number' }) => {
     return v ?? 0;
   };
 
-  const Pill = ({ value, wins, color }) => (
+  const ValuePill = ({ value, color }) => (
     <div
-      className={`min-w-[44px] text-center px-2 py-0.5 rounded-full text-xs font-bold tabular-nums
-        transition-all duration-300 ${wins ? 'text-white' : 'text-zinc-500'}`}
-      style={wins ? { backgroundColor: color } : {}}
+      className="min-w-[44px] h-[26px] flex items-center justify-center rounded-lg bg-zinc-950/80 border border-white/5 text-[11px] font-medium tabular-nums shadow-sm"
+      style={{ fontFamily: "'JetBrains Mono', 'Fira Mono', monospace", color: '#ECEDEE' }}
     >
       {fmt(value)}
     </div>
   );
 
   return (
-    <div className="flex items-center justify-between py-1.5 border-b border-white/[0.04] last:border-0">
-      <Pill value={valueA} wins={aWins} color="#006FEE" />
-      <span className="flex-1 text-center text-[11px] font-medium text-zinc-400 px-2">{label}</span>
-      <Pill value={valueB} wins={bWins} color="#f31260" />
+    <div className="flex flex-col gap-1 py-1.5 border-b border-white/[0.04] last:border-0">
+      {/* Values + Label */}
+      <div className="flex justify-between items-center">
+        <ValuePill value={valueA} color="#006FEE" />
+        <span className="flex-1 text-center text-[11px] font-semibold tracking-wide text-zinc-400 uppercase px-2">{label}</span>
+        <ValuePill value={valueB} color="#f31260" />
+      </div>
+      {/* Dual mirrored bars */}
+      <div className="flex items-center justify-center gap-1.5 px-1">
+        {/* Left bar (team A) — fills from right */}
+        <div className="flex-1 h-1.5 bg-zinc-950/60 border border-white/5 rounded-full flex justify-end overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-700"
+            style={{ width: `${(numA / maxVal) * 100}%`, backgroundColor: '#006FEE' }}
+          />
+        </div>
+        <div className="w-1 h-1 rounded-full bg-zinc-600 flex-shrink-0" />
+        {/* Right bar (team B) — fills from left */}
+        <div className="flex-1 h-1.5 bg-zinc-950/60 border border-white/5 rounded-full flex justify-start overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-700"
+            style={{ width: `${(numB / maxVal) * 100}%`, backgroundColor: '#f31260' }}
+          />
+        </div>
+      </div>
     </div>
   );
 };
@@ -168,10 +199,16 @@ const buildSections = (teamA, teamB) => ({
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
+const MATCH_ID = 'test_match';
+
 const TeamComparison = ({ teamA, teamB }) => {
   const [pitchTeam,    setPitchTeam]    = useState('teamA');
   const [analysis,     setAnalysis]     = useState('passing');
   const [activeSection, setActiveSection] = useState('Top Stats');
+
+  // Fetch shot map & momentum data
+  const { shotData } = useShotMap(MATCH_ID);
+  const { momentumData } = useMomentum(MATCH_ID);
 
   if (!teamA || !teamB) return null;
 
@@ -235,8 +272,8 @@ const TeamComparison = ({ teamA, teamB }) => {
           {/* Stats card */}
           <div className="flex-1 min-h-0 bg-zinc-900/60 backdrop-blur-sm rounded-xl border border-white/5 flex flex-col overflow-hidden">
 
-            {/* Section tabs */}
-            <div className="flex items-center border-b border-white/5 px-1 pt-1 gap-0.5 flex-shrink-0 overflow-x-auto no-scrollbar">
+            {/* Section tabs — pill style (TFM design) */}
+            <div className="flex items-center px-2 pt-2 pb-1.5 gap-1 flex-shrink-0 overflow-x-auto no-scrollbar">
               {STAT_SECTIONS.map(sec => {
                 const isActive = activeSection === sec;
                 return (
@@ -244,11 +281,11 @@ const TeamComparison = ({ teamA, teamB }) => {
                     key={sec}
                     onClick={() => setActiveSection(sec)}
                     className={`
-                      px-3 py-2 text-[10px] font-bold tracking-wider uppercase whitespace-nowrap
-                      rounded-t-lg transition-all duration-200 border-b-2 -mb-px
+                      px-3 py-1.5 text-[10px] font-bold tracking-wider uppercase whitespace-nowrap
+                      rounded-lg transition-all duration-200
                       ${isActive
-                        ? 'text-white border-primary bg-white/5'
-                        : 'text-zinc-600 border-transparent hover:text-zinc-400 hover:bg-white/3'
+                        ? 'bg-white/10 text-white'
+                        : 'text-zinc-500 hover:text-white hover:bg-white/5'
                       }
                     `}
                   >
@@ -257,6 +294,7 @@ const TeamComparison = ({ teamA, teamB }) => {
                 );
               })}
             </div>
+            <div className="h-px bg-white/5 flex-shrink-0" />
 
             {/* Team name headers for stat rows */}
             <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 flex-shrink-0">
@@ -274,17 +312,62 @@ const TeamComparison = ({ teamA, teamB }) => {
             {/* Scrollable rows */}
             <div className="flex-1 overflow-y-auto no-scrollbar px-4 py-2">
               {activeSection === 'Top Stats' && (
-                <PossessionBar
-                  valueA={teamA.topStats?.possession}
-                  valueB={teamB.topStats?.possession}
-                />
+                <>
+                  <PossessionBar
+                    valueA={teamA.topStats?.possession}
+                    valueB={teamB.topStats?.possession}
+                  />
+
+                  {/* Stat rows first */}
+                  {activeRows
+                    .filter(row => row.label !== 'Possession')
+                    .map((row, i) => (
+                      <StatRow key={i} {...row} />
+                    ))
+                  }
+
+                  {/* Shot Map — TFM card style */}
+                  <div className="bg-[#18181B]/80 backdrop-blur-[16px] border border-white/5 rounded-xl p-3 shadow-lg mt-3">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-[11px] font-bold tracking-[0.1em] text-[#ECEDEE] uppercase">
+                        Shot Map
+                      </h3>
+                    </div>
+                    <ShotMapViz shotData={shotData} teamAShort={teamA?.teamShort} teamBShort={teamB?.teamShort} />
+                  </div>
+
+                  {/* Momentum + Accurate Passes — side by side (TFM grid layout) */}
+                  <div className="grid grid-cols-2 gap-3 mt-3 mb-2">
+
+                    {/* Momentum */}
+                    <div className="bg-[#18181B]/80 backdrop-blur-[16px] border border-white/5 rounded-xl p-3 shadow-lg flex flex-col">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-[11px] font-bold tracking-[0.1em] text-[#ECEDEE] uppercase">
+                          Momentum
+                        </h3>
+                      </div>
+                      <MomentumChart momentumData={momentumData} shotData={shotData} teamAShort={teamA?.teamShort} teamBShort={teamB?.teamShort} />
+                    </div>
+
+                    {/* Accurate Passes */}
+                    <div className="bg-[#18181B]/80 backdrop-blur-[16px] border border-white/5 rounded-xl p-3 shadow-lg flex flex-col justify-between">
+                      <h3 className="text-[11px] font-bold tracking-[0.1em] text-[#ECEDEE] uppercase mb-4">
+                        Accurate Passes
+                      </h3>
+                      <div className="flex-1 flex items-center justify-center">
+                        <AccuratePassesViz teamA={teamA} teamB={teamB} />
+                      </div>
+                    </div>
+
+                  </div>
+                </>
               )}
-              {activeRows
-                .filter(row => activeSection !== 'Top Stats' || row.label !== 'Possession')
-                .map((row, i) => (
+
+              {activeSection !== 'Top Stats' && (
+                activeRows.map((row, i) => (
                   <StatRow key={i} {...row} />
                 ))
-              }
+              )}
             </div>
           </div>
         </div>
