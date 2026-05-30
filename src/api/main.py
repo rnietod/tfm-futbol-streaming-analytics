@@ -576,7 +576,8 @@ def get_match_stats(match_id: str):
                         "clearances": int(r.clearances or 0),
                     },
                     "passNetwork": [],
-                    "averagePositions": []
+                    "averagePositions": [],
+                    "averagePositionsTracking": []
                 }
 
             # Build a name→dorsal map from match_players for jersey numbers
@@ -629,6 +630,102 @@ def get_match_stats(match_id: str):
                         "y": round(float(ar.avg_y) / 0.8, 1)
                     })
 
+            # Fetch roster info from match_players
+            roster_rows = conn.execute(text(
+                "SELECT player_id, team_id, name, dorsal, position FROM match_players WHERE match_id = :mid"
+            ), {"mid": match_id}).fetchall()
+
+            # Build roster map keyed by tracking_player_id
+            roster_by_tracking = {}
+            for r in roster_rows:
+                roster_by_tracking[str(r.player_id)] = {
+                    "team_id": r.team_id, "name": r.name,
+                    "number": r.dorsal, "position": r.position,
+                }
+
+            # 2.5 Compute tracking-based average positions
+            tracking_avg_rows = []
+            try:
+                tracking_avg_rows = conn.execute(text("""
+                    WITH extracted AS (
+                        SELECT 
+                            (players_data->>'period')::float as period,
+                            (elem->>'player_id')::text as tracking_id,
+                            (elem->>'x')::float as x,
+                            (elem->>'y')::float as y
+                        FROM match_tracking,
+                        LATERAL jsonb_array_elements(players_data->'player_data') as elem
+                        WHERE match_id = :mid
+                    )
+                    SELECT 
+                        tracking_id,
+                        period,
+                        AVG(x) as avg_x,
+                        AVG(y) as avg_y,
+                        COUNT(*) as count
+                    FROM extracted
+                    WHERE tracking_id IS NOT NULL AND x IS NOT NULL AND y IS NOT NULL
+                    GROUP BY tracking_id, period
+                """), {"mid": match_id}).fetchall()
+                
+                # Create team_id to name map
+                team_ids = set(r.team_id for r in roster_rows if r.team_id is not None)
+                team_ids_sorted = sorted(team_ids)
+                home_team_id = team_ids_sorted[1] if len(team_ids_sorted) >= 2 else team_ids_sorted[0]
+                
+                results = {}
+                for tr in tracking_avg_rows:
+                    tid = tr.tracking_id
+                    period = tr.period
+                    ro = roster_by_tracking.get(tid)
+                    if ro:
+                        team_id = ro.get("team_id")
+                        # Determine normalized attacking coordinate based on team and period
+                        if team_id == home_team_id:
+                            # Home team (Atlético): L->R in P1, R->L in P2
+                            x_norm = -tr.avg_x if period == 2.0 else tr.avg_x
+                            y_norm = -tr.avg_y if period == 2.0 else tr.avg_y
+                        else:
+                            # Away team (Real): R->L in M1, L->R in M2
+                            x_norm = tr.avg_x if period == 2.0 else -tr.avg_x
+                            y_norm = tr.avg_y if period == 2.0 else -tr.avg_y
+                        
+                        if tid not in results:
+                            results[tid] = {"name": ro.get("name"), "number": ro.get("number"), "team_id": team_id, "x_sum": 0.0, "y_sum": 0.0, "count": 0}
+                        
+                        results[tid]["x_sum"] += x_norm * tr.count
+                        results[tid]["y_sum"] += y_norm * tr.count
+                        results[tid]["count"] += tr.count
+
+                # Create team_id to name mapping for stats output keys
+                team_id_to_name = {}
+                if len(team_ids_sorted) >= 2:
+                    team_id_to_name[team_ids_sorted[1]] = home_short
+                    team_id_to_name[team_ids_sorted[0]] = away_short
+                elif len(team_ids_sorted) == 1:
+                    team_id_to_name[team_ids_sorted[0]] = home_short
+
+                _TRACKING_TO_OPTA = {v: k for k, v in _OPTA_TO_TRACKING.items()}
+
+                for tid, data in results.items():
+                    if data["count"] > 0:
+                        tname = team_id_to_name.get(data["team_id"])
+                        if tname and tname in teams_data:
+                            opta_id = _TRACKING_TO_OPTA.get(tid, tid)
+                            final_x = round(((data["x_sum"] / data["count"] + 52.5) / 105.0) * 100, 1)
+                            final_y = round(((data["y_sum"] / data["count"] + 34.0) / 68.0) * 100, 1)
+                            teams_data[tname]["averagePositionsTracking"].append({
+                                "player_id": opta_id,
+                                "name": data["name"],
+                                "number": data["number"],
+                                "x": final_x,
+                                "y": final_y
+                            })
+            except Exception as track_err:
+                print(f"⚠️ Tracking average positions query error: {track_err}")
+                import traceback
+                traceback.print_exc()
+
             team_a_data = {}
             team_b_data = {}
             team_keys = list(teams_data.keys())
@@ -674,18 +771,6 @@ def get_match_stats(match_id: str):
                 WHERE e.match_id = :mid AND e.player_id IS NOT NULL
                 GROUP BY e.player_id, e.player_name, e.team_name
             """), {"mid": match_id}).fetchall()
-
-            roster_rows = conn.execute(text(
-                "SELECT player_id, team_id, name, dorsal, position FROM match_players WHERE match_id = :mid"
-            ), {"mid": match_id}).fetchall()
-
-            # Build roster map keyed by tracking_player_id
-            roster_by_tracking = {}
-            for r in roster_rows:
-                roster_by_tracking[str(r.player_id)] = {
-                    "team_id": r.team_id, "name": r.name,
-                    "number": r.dorsal, "position": r.position,
-                }
 
             players = {}
             for r in player_rows:

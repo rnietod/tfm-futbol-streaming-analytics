@@ -187,6 +187,7 @@ const MATCH_ID = 'test_match';
 const TeamComparison = ({ teamA, teamB, selectedTeam }) => {
   const [analysis,     setAnalysis]     = useState('passing');
   const [activeSection, setActiveSection] = useState('Top Stats');
+  const [dataType,     setDataType]     = useState('eventing'); // 'eventing' | 'tracking'
 
   // Fetch shot map & momentum data
   const { shotData } = useShotMap(MATCH_ID);
@@ -210,12 +211,39 @@ const TeamComparison = ({ teamA, teamB, selectedTeam }) => {
           <AnalysisSidebar active={analysis} onChange={setAnalysis} selectedTeam={selectedTeam} />
 
           {/* Pitch fills remaining width */}
-          <div className="flex-1 min-w-0 min-h-0">
+          <div className="flex-1 min-w-0 min-h-0 relative">
+            {analysis === 'passing' && (
+              <div className="absolute top-2 right-2 z-20 flex gap-1 bg-zinc-950/80 backdrop-blur-md p-0.5 rounded-lg border border-white/5 shadow-lg">
+                {[
+                  { value: 'eventing', label: 'Eventing Data' },
+                  { value: 'tracking', label: 'Tracking Data' }
+                ].map(opt => {
+                  const isActive = dataType === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => setDataType(opt.value)}
+                      className={`
+                        px-2 py-1 rounded text-[8px] font-bold uppercase tracking-wider transition-all duration-200 border
+                        ${isActive
+                          ? 'bg-white/10 text-white border-white/10 shadow-sm'
+                          : 'text-zinc-500 hover:text-zinc-300 border-transparent hover:bg-white/5'
+                        }
+                      `}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             <PassingNetworkPitch
               teamA={teamA}
               teamB={teamB}
               selectedTeam={selectedTeam}
               analysisMode={analysis}
+              dataType={dataType}
             />
           </div>
         </div>

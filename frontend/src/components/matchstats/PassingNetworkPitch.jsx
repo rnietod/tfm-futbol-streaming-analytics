@@ -59,11 +59,15 @@ const PitchMarkings = () => {
 };
 
 // ============================================================
-const PassingNetworkPitch = ({ teamA, teamB, selectedTeam, analysisMode = 'passing' }) => {
+const PassingNetworkPitch = ({ teamA, teamB, selectedTeam, analysisMode = 'passing', dataType = 'eventing' }) => {
   const data      = selectedTeam === 'teamA' ? teamA : teamB;
   const teamColor = selectedTeam === 'teamA' ? '#006FEE' : '#f31260';
 
-  const { passNetwork = [], averagePositions = [] } = data || {};
+  const passNetwork = data?.passNetwork || [];
+  const averagePositions = dataType === 'tracking'
+    ? (data?.averagePositionsTracking || [])
+    : (data?.averagePositions || []);
+
   const hasData = passNetwork.length > 0 && averagePositions.length > 0;
 
   const maxPasses = useMemo(() => {
@@ -114,8 +118,10 @@ const PassingNetworkPitch = ({ teamA, teamB, selectedTeam, analysisMode = 'passi
                 );
               })}
 
-              {scaledPositions.map((player, idx) => (
-                <g key={`node-${player.player_id || player.name || idx}`}>
+              {scaledPositions.map((player, idx) => {
+                const nodeKey = player.player_id && player.player_id !== 'null' ? player.player_id : (player.name || idx);
+                return (
+                  <g key={`node-${nodeKey}`}>
                   <circle cx={player.svgX} cy={player.svgY} r="5" fill={teamColor} fillOpacity="0.12" />
                   <circle cx={player.svgX} cy={player.svgY} r="3.8"
                     fill="rgba(0,0,0,0.88)" stroke={teamColor} strokeWidth="0.65" />
@@ -128,7 +134,8 @@ const PassingNetworkPitch = ({ teamA, teamB, selectedTeam, analysisMode = 'passi
                     {player.number ?? '?'}
                   </text>
                 </g>
-              ))}
+                );
+              })}
             </>
           )}
 
