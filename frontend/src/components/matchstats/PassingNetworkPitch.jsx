@@ -70,7 +70,18 @@ const PassingNetworkPitch = ({ teamA, teamB, selectedTeam, analysisMode = 'passi
   const averagePositions = useMemo(() => {
     if (dataType !== 'tracking') return eventPositions;
     return eventPositions.map(ep => {
-      const tp = trackingPositions.find(t => String(t.player_id) === String(ep.player_id));
+      // Robust multi-criteria matching (jersey number, ID, or substring) because:
+      // 1. player_id in eventing is null, but present in tracking.
+      // 2. name formats differ (eventing has full names, tracking has short names).
+      const tp = trackingPositions.find(t => {
+        const numMatch = t.number !== null && ep.number !== null && Number(t.number) === Number(ep.number);
+        const idMatch = t.player_id && ep.player_id && String(t.player_id) === String(ep.player_id);
+        const nameMatch = t.name && ep.name && (
+          ep.name.toLowerCase().includes(t.name.toLowerCase()) || 
+          t.name.toLowerCase().includes(ep.name.toLowerCase())
+        );
+        return numMatch || idMatch || nameMatch;
+      });
       if (tp) {
         return { ...ep, x: tp.x, y: tp.y };
       }
