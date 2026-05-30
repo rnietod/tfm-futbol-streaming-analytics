@@ -294,7 +294,11 @@ const MatchStatsTab = ({ targetPlayer }) => {
       {viewMode === 'overview' ? (
         /* overview: no outer scroll — TeamComparison fills height with flex */
         <div className="flex-1 min-h-0 overflow-hidden p-4">
-          <TeamComparison teamA={teamA} teamB={teamB} />
+          <TeamComparison
+            teamA={teamA}
+            teamB={teamB}
+            selectedTeam={selectedTeam}
+          />
         </div>
       ) : (
         /* player deep dive: scrollable */

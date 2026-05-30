@@ -4,6 +4,7 @@ import PassingNetworkPitch from './PassingNetworkPitch';
 import ShotMapViz from './ShotMapViz';
 import MomentumChart from './MomentumChart';
 import AccuratePassesViz from './AccuratePassesViz';
+import { useShotMap, useMomentum } from '../../hooks/useMatchStats';
 
 // ============================================================
 // TEAM COMPARISON — Desktop-first layout
@@ -50,32 +51,7 @@ const AnalysisSidebar = ({ active, onChange }) => (
   </div>
 );
 
-// ── TEAM TOGGLE ──────────────────────────────────────────────
-const TeamToggle = ({ teamA, teamB, value, onChange }) => (
-  <div className="flex items-center gap-1 p-1 bg-zinc-950/70 rounded-xl border border-white/5">
-    {[
-      { key: 'teamA', name: teamA?.teamName, color: '#006FEE' },
-      { key: 'teamB', name: teamB?.teamName, color: '#f31260' },
-    ].map(({ key, name, color }) => {
-      const isActive = value === key;
-      return (
-        <button
-          key={key}
-          onClick={() => onChange(key)}
-          className={`flex-1 py-1.5 px-3 rounded-lg text-[11px] font-bold tracking-wider
-            transition-all duration-200 ${isActive ? 'text-white border' : 'text-zinc-500 hover:text-zinc-300 border border-transparent'}`}
-          style={isActive ? {
-            backgroundColor: `${color}22`,
-            borderColor: `${color}44`,
-            boxShadow: `0 0 12px ${color}22`,
-          } : {}}
-        >
-          {name || key}
-        </button>
-      );
-    })}
-  </div>
-);
+
 
 // ── POSSESSION BAR ───────────────────────────────────────────
 const PossessionBar = ({ valueA, valueB }) => {
@@ -200,8 +176,7 @@ const buildSections = (teamA, teamB) => ({
 // ============================================================
 const MATCH_ID = 'test_match';
 
-const TeamComparison = ({ teamA, teamB }) => {
-  const [pitchTeam,    setPitchTeam]    = useState('teamA');
+const TeamComparison = ({ teamA, teamB, selectedTeam }) => {
   const [analysis,     setAnalysis]     = useState('passing');
   const [activeSection, setActiveSection] = useState('Top Stats');
 
@@ -217,9 +192,6 @@ const TeamComparison = ({ teamA, teamB }) => {
   return (
     <div className="w-full h-full flex flex-col gap-3 overflow-hidden">
 
-      {/* ── ROW 1: Team toggle (full width) ─────────────────── */}
-      <TeamToggle teamA={teamA} teamB={teamB} value={pitchTeam} onChange={setPitchTeam} />
-
       {/* ── ROW 2: [Sidebar | Pitch 40%] | [Stats 60%] ──────── */}
       <div className="flex-1 min-h-0 flex gap-3 overflow-hidden">
 
@@ -234,7 +206,7 @@ const TeamComparison = ({ teamA, teamB }) => {
             <PassingNetworkPitch
               teamA={teamA}
               teamB={teamB}
-              selectedTeam={pitchTeam}
+              selectedTeam={selectedTeam}
               analysisMode={analysis}
             />
           </div>
