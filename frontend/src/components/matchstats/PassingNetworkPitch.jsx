@@ -64,9 +64,19 @@ const PassingNetworkPitch = ({ teamA, teamB, selectedTeam, analysisMode = 'passi
   const teamColor = selectedTeam === 'teamA' ? '#006FEE' : '#f31260';
 
   const passNetwork = data?.passNetwork || [];
-  const averagePositions = dataType === 'tracking'
-    ? (data?.averagePositionsTracking || [])
-    : (data?.averagePositions || []);
+  const eventPositions = data?.averagePositions || [];
+  const trackingPositions = data?.averagePositionsTracking || [];
+
+  const averagePositions = useMemo(() => {
+    if (dataType !== 'tracking') return eventPositions;
+    return eventPositions.map(ep => {
+      const tp = trackingPositions.find(t => String(t.player_id) === String(ep.player_id));
+      if (tp) {
+        return { ...ep, x: tp.x, y: tp.y };
+      }
+      return ep;
+    });
+  }, [dataType, eventPositions, trackingPositions]);
 
   const hasData = passNetwork.length > 0 && averagePositions.length > 0;
 

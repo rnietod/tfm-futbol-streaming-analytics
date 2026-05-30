@@ -684,11 +684,11 @@ def get_match_stats(match_id: str):
                         if team_id == home_team_id:
                             # Home team (Atlético): L->R in P1, R->L in P2
                             x_norm = -tr.avg_x if period == 2.0 else tr.avg_x
-                            y_norm = -tr.avg_y if period == 2.0 else tr.avg_y
+                            y_norm = tr.avg_y if period == 2.0 else -tr.avg_y
                         else:
                             # Away team (Real): R->L in M1, L->R in M2
                             x_norm = tr.avg_x if period == 2.0 else -tr.avg_x
-                            y_norm = tr.avg_y if period == 2.0 else -tr.avg_y
+                            y_norm = -tr.avg_y if period == 2.0 else tr.avg_y
                         
                         if tid not in results:
                             results[tid] = {"name": ro.get("name"), "number": ro.get("number"), "team_id": team_id, "x_sum": 0.0, "y_sum": 0.0, "count": 0}
