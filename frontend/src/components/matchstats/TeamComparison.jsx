@@ -4,7 +4,6 @@ import PassingNetworkPitch from './PassingNetworkPitch';
 import ShotMapViz from './ShotMapViz';
 import MomentumChart from './MomentumChart';
 import AccuratePassesViz from './AccuratePassesViz';
-import { useShotMap, useMomentum } from '../../hooks/useMatchStats';
 
 // ============================================================
 // TEAM COMPARISON — Desktop-first layout
