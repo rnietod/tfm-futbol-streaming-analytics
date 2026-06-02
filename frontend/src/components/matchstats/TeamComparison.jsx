@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Network, Target, Thermometer, X, Award, Navigation, Shield, HelpCircle, Flame, Star } from 'lucide-react';
+import { Network, Target, Thermometer, X, Award, Navigation, Shield, Flame } from 'lucide-react';
+
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts';
 import PassingNetworkPitch from './PassingNetworkPitch';
 import ShotMapViz from './ShotMapViz';
@@ -164,15 +165,23 @@ const buildSections = (teamA, teamB) => ({
     { label: 'xG',                 valueA: teamA.topStats?.xG,                valueB: teamB.topStats?.xG,               format: 'decimal' },
   ],
   'Defending': [
+    { label: 'Tackles',       valueA: teamA.defense?.tackles,      valueB: teamB.defense?.tackles      },
     { label: 'Interceptions', valueA: teamA.defense?.interceptions, valueB: teamB.defense?.interceptions },
-    { label: 'Tackles Won',   valueA: teamA.defense?.tacklesWon,    valueB: teamB.defense?.tacklesWon    },
+    { label: 'Blocks',        valueA: teamA.defense?.blocks,        valueB: teamB.defense?.blocks        },
     { label: 'Clearances',    valueA: teamA.defense?.clearances,    valueB: teamB.defense?.clearances    },
+    { label: 'Keeper Saves',  valueA: teamA.defense?.keeperSaves,   valueB: teamB.defense?.keeperSaves   },
   ],
   'Passing': [
-    { label: 'Total Passes',        valueA: teamA.topStats?.totalPasses,      valueB: teamB.topStats?.totalPasses      },
-    { label: 'Accurate Passes',     valueA: teamA.topStats?.accuratePasses,   valueB: teamB.topStats?.accuratePasses   },
-    { label: 'Pass Accuracy',       valueA: teamA.topStats?.passAccuracy,     valueB: teamB.topStats?.passAccuracy,     format: 'pct' },
-    { label: 'Progressive Passes',  valueA: teamA.passing?.progressivePasses, valueB: teamB.passing?.progressivePasses },
+    { label: 'Total Passes',        valueA: teamA.passing?.totalPasses,      valueB: teamB.passing?.totalPasses      },
+    { label: 'Accurate Passes',     valueA: teamA.passing?.accuratePasses,   valueB: teamB.passing?.accuratePasses   },
+    { label: 'Pass Accuracy',       valueA: teamA.passing?.passAccuracy,     valueB: teamB.passing?.passAccuracy,     format: 'pct' },
+    { label: 'Own Half',            valueA: teamA.passing?.ownHalfPasses,    valueB: teamB.passing?.ownHalfPasses    },
+    { label: 'Opposition Half',     valueA: teamA.passing?.oppHalfPasses,    valueB: teamB.passing?.oppHalfPasses    },
+    { label: 'Accurate Long Balls', valueA: teamA.passing?.longBallsAccurate,valueB: teamB.passing?.longBallsAccurate},
+    { label: 'Accurate Crosses',    valueA: teamA.passing?.crossesAccurate,  valueB: teamB.passing?.crossesAccurate  },
+    { label: 'Throws',              valueA: teamA.passing?.throws,           valueB: teamB.passing?.throws           },
+    { label: 'Touches in Opp Box', valueA: teamA.passing?.oppBoxTouches,    valueB: teamB.passing?.oppBoxTouches    },
+    { label: 'Offsides',            valueA: teamA.passing?.offsides,         valueB: teamB.passing?.offsides         },
   ],
   'Fouls': [
     { label: 'Fouls',        valueA: teamA.topStats?.fouls,   valueB: teamB.topStats?.fouls   },
@@ -183,54 +192,7 @@ const buildSections = (teamA, teamB) => ({
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
-// ── HELPER COMPONENTS FOR ATTACKING TAB ───────────────────────────
-const AttackingRow = ({ label, valA, valB, isDecimal = false }) => {
-  const numA = parseFloat(valA) || 0;
-  const numB = parseFloat(valB) || 0;
 
-  const formatVal = (val) => {
-    if (isDecimal) return parseFloat(val || 0).toFixed(2);
-    return parseInt(val || 0, 10);
-  };
-
-  const highlightA = numA > numB;
-  const highlightB = numB > numA;
-
-  return (
-    <div className="flex items-center justify-between py-1.5 border-b border-white/[0.04] last:border-0">
-      {/* Left Value */}
-      <div className="min-w-[44px] flex justify-start">
-        {highlightA ? (
-          <span className="px-2 py-0.5 bg-white text-zinc-950 font-mono font-black rounded text-[10px] shadow-sm select-none">
-            {formatVal(valA)}
-          </span>
-        ) : (
-          <span className="text-zinc-400 font-mono font-bold text-[10px] pl-1 select-none">
-            {formatVal(valA)}
-          </span>
-        )}
-      </div>
-
-      {/* Middle Label */}
-      <span className="flex-1 text-center text-[10px] font-bold text-zinc-400 uppercase tracking-wider px-2 select-none">
-        {label}
-      </span>
-
-      {/* Right Value */}
-      <div className="min-w-[44px] flex justify-end">
-        {highlightB ? (
-          <span className="px-2 py-0.5 bg-white text-zinc-950 font-mono font-black rounded text-[10px] shadow-sm select-none">
-            {formatVal(valB)}
-          </span>
-        ) : (
-          <span className="text-zinc-400 font-mono font-bold text-[10px] pr-1 select-none">
-            {formatVal(valB)}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-};
 
 const AttackingGoalMouth = ({ shots, teamAName, teamBName, onShotSelect }) => {
   const [hoveredIdx, setHoveredIdx] = useState(null);
@@ -334,20 +296,9 @@ const AttackingGoalMouth = ({ shots, teamAName, teamBName, onShotSelect }) => {
 
 const AnimatePlayerCard = ({ playerId, players, teamA, teamB, statsData, loading, onClose }) => {
   if (!playerId || !players?.[playerId]) {
-    return (
-      <div className="w-full flex-1 flex flex-col items-center justify-center p-6 border border-dashed border-white/10 rounded-xl bg-zinc-950/20 min-h-[220px]">
-        <div className="w-10 h-10 rounded-full border border-white/5 flex items-center justify-center mb-3 bg-zinc-900/40">
-          <Star size={14} className="text-zinc-600 animate-pulse" />
-        </div>
-        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider text-center">
-          No player selected
-        </p>
-        <p className="text-[9px] text-zinc-600 text-center mt-1 max-w-[180px]">
-          Click any shot in the goal mouth to view the player's performance radar and match stats!
-        </p>
-      </div>
-    );
+    return null;
   }
+
 
   const player = players[playerId];
   const pName = player.info.name || player.info.shortName || "Unknown Player";
@@ -513,9 +464,9 @@ const TeamComparison = ({ teamA, teamB, selectedTeam, players }) => {
   const [activeSection, setActiveSection] = useState('Top Stats');
   const [dataType,     setDataType]     = useState('eventing'); // 'eventing' | 'tracking'
   const [selectedPlayerId, setSelectedPlayerId] = useState(null);
+  const [selectedShot,    setSelectedShot]    = useState(null); // stores the full shot object for positioning
   const [playerProfileStats, setPlayerProfileStats] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
-  const [showXgHelper, setShowXgHelper] = useState(false);
 
   // Fetch shot map & momentum data
   const { shotData } = useShotMap(MATCH_ID);
@@ -573,6 +524,7 @@ const TeamComparison = ({ teamA, teamB, selectedTeam, players }) => {
 
   const handleShotClick = (shot) => {
     console.log("🎯 Attacking Shot Node Clicked:", shot);
+    setSelectedShot(shot); // save for positional overlay
     if (shot.player_id && players?.[shot.player_id]) {
       console.log("✅ Resolved via backend player_id:", shot.player_id);
       setSelectedPlayerId(shot.player_id);
@@ -595,6 +547,13 @@ const TeamComparison = ({ teamA, teamB, selectedTeam, players }) => {
       }
     }
   };
+
+  const handleClosePlayerCard = () => {
+    setSelectedPlayerId(null);
+    setSelectedShot(null);
+    setPlayerProfileStats(null);
+  };
+
 
   if (!teamA || !teamB) return null;
 
@@ -773,176 +732,128 @@ const TeamComparison = ({ teamA, teamB, selectedTeam, players }) => {
                 </>
               )}
 
-              {activeSection !== 'Top Stats' && activeSection !== 'Attacking' && (
+              {activeSection !== 'Top Stats' && activeSection !== 'Attacking' && activeSection !== 'Defending' && activeSection !== 'Passing' && (
                 activeRows.map((row, i) => (
                   <StatRow key={i} {...row} />
                 ))
               )}
 
+              {activeSection === 'Passing' && (
+                <>
+                  {/* ── PASSES ── */}
+                  <div className="bg-[#18181B]/80 backdrop-blur-[16px] border border-white/5 rounded-xl p-3 shadow-lg mt-1">
+                    <h3 className="text-[11px] font-bold tracking-[0.1em] text-[#ECEDEE] uppercase mb-3">Passes</h3>
+                    <StatRow label="Total Passes"    valueA={teamA.passing?.totalPasses}     valueB={teamB.passing?.totalPasses}     />
+                    <StatRow label="Accurate Passes" valueA={teamA.passing?.accuratePasses}  valueB={teamB.passing?.accuratePasses}  />
+                    <StatRow label="Own Half"         valueA={teamA.passing?.ownHalfPasses}   valueB={teamB.passing?.ownHalfPasses}   />
+                    <StatRow label="Opposition Half"  valueA={teamA.passing?.oppHalfPasses}   valueB={teamB.passing?.oppHalfPasses}   />
+                    <StatRow label="Accurate Long Balls" valueA={teamA.passing?.longBallsAccurate} valueB={teamB.passing?.longBallsAccurate} />
+                    <StatRow label="Accurate Crosses" valueA={teamA.passing?.crossesAccurate} valueB={teamB.passing?.crossesAccurate} />
+                    <StatRow label="Throws"           valueA={teamA.passing?.throws}          valueB={teamB.passing?.throws}          />
+                    <StatRow label="Touches in Opp Box" valueA={teamA.passing?.oppBoxTouches} valueB={teamB.passing?.oppBoxTouches}  />
+                    <StatRow label="Offsides"         valueA={teamA.passing?.offsides}        valueB={teamB.passing?.offsides}        />
+                  </div>
+                </>
+              )}
+
+              {activeSection === 'Defending' && (
+                <>
+                  {/* ── DEFENSE ── */}
+                  <div className="bg-[#18181B]/80 backdrop-blur-[16px] border border-white/5 rounded-xl p-3 shadow-lg mt-1">
+                    <h3 className="text-[11px] font-bold tracking-[0.1em] text-[#ECEDEE] uppercase mb-3">Defense</h3>
+                    <StatRow label="Tackles"       valueA={teamA.defense?.tackles}      valueB={teamB.defense?.tackles}      />
+                    <StatRow label="Interceptions" valueA={teamA.defense?.interceptions} valueB={teamB.defense?.interceptions} />
+                    <StatRow label="Blocks"        valueA={teamA.defense?.blocks}        valueB={teamB.defense?.blocks}        />
+                    <StatRow label="Clearances"    valueA={teamA.defense?.clearances}    valueB={teamB.defense?.clearances}    />
+                    <StatRow label="Keeper Saves"  valueA={teamA.defense?.keeperSaves}   valueB={teamB.defense?.keeperSaves}   />
+                  </div>
+
+                  {/* ── DUELS ── */}
+                  <div className="bg-[#18181B]/80 backdrop-blur-[16px] border border-white/5 rounded-xl p-3 shadow-lg mt-3">
+                    <h3 className="text-[11px] font-bold tracking-[0.1em] text-[#ECEDEE] uppercase mb-3">Duels</h3>
+                    <StatRow label="Duels Won"           valueA={teamA.defense?.duelsWon}       valueB={teamB.defense?.duelsWon}       />
+                    <StatRow label="Ground Duels Won"    valueA={teamA.defense?.groundDuelsWon}  valueB={teamB.defense?.groundDuelsWon}  />
+                    <StatRow label="Aerial Duels Won"    valueA={teamA.defense?.aerialDuelsWon}  valueB={teamB.defense?.aerialDuelsWon}  />
+                    <StatRow label="Successful Dribbles" valueA={teamA.defense?.dribblesWon}     valueB={teamB.defense?.dribblesWon}     />
+                  </div>
+
+                  {/* ── DISCIPLINE ── */}
+                  <div className="bg-[#18181B]/80 backdrop-blur-[16px] border border-white/5 rounded-xl p-3 shadow-lg mt-3 mb-2">
+                    <h3 className="text-[11px] font-bold tracking-[0.1em] text-[#ECEDEE] uppercase mb-3">Discipline</h3>
+                    <StatRow label="Yellow Cards"    valueA={teamA.defense?.yellowCards}    valueB={teamB.defense?.yellowCards}    />
+                    <StatRow label="Red Cards"       valueA={teamA.defense?.redCards}       valueB={teamB.defense?.redCards}       />
+                    <StatRow label="Fouls Committed" valueA={teamA.defense?.foulsCommitted} valueB={teamB.defense?.foulsCommitted} />
+                  </div>
+                </>
+              )}
+
               {activeSection === 'Attacking' && (
-                <div className="flex flex-col gap-4">
-                  {/* ATTACKING DASHBOARD */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Expected Goals Card */}
-                    <div className="bg-zinc-950/60 backdrop-blur-md rounded-xl border border-white/5 p-4 shadow-lg flex flex-col justify-between">
-                      <div>
-                        <h3 className="text-center text-[11px] font-extrabold uppercase tracking-widest text-[#ECEDEE] mb-4 select-none">
-                          Expected goals (xG)
-                        </h3>
-                        <div className="flex flex-col gap-1">
-                          <AttackingRow
-                            label="Expected goals (xG)"
-                            valA={teamA.topStats?.xG}
-                            valB={teamB.topStats?.xG}
-                            isDecimal={true}
-                          />
-                          <AttackingRow
-                            label="xG open play"
-                            valA={teamA.topStats?.xgOpenPlay}
-                            valB={teamB.topStats?.xgOpenPlay}
-                            isDecimal={true}
-                          />
-                          <AttackingRow
-                            label="xG set play"
-                            valA={teamA.topStats?.xgSetPlay}
-                            valB={teamB.topStats?.xgSetPlay}
-                            isDecimal={true}
-                          />
-                          <AttackingRow
-                            label="Non-penalty xG"
-                            valA={teamA.topStats?.xgNonPenalty}
-                            valB={teamB.topStats?.xgNonPenalty}
-                            isDecimal={true}
-                          />
-                          <AttackingRow
-                            label="xG on target (xGOT)"
-                            valA={teamA.topStats?.xgOnTarget}
-                            valB={teamB.topStats?.xgOnTarget}
-                            isDecimal={true}
-                          />
-                        </div>
-                      </div>
-                      
-                      {/* Explainer Link */}
-                      <div className="mt-4 pt-3 border-t border-white/[0.04]">
-                        <button
-                          onClick={() => setShowXgHelper(!showXgHelper)}
-                          className="w-full flex items-center justify-center gap-1.5 text-[10px] text-zinc-500 hover:text-zinc-300 font-bold uppercase transition-colors"
-                        >
-                          <HelpCircle size={12} />
-                          What does Expected Goals (xG) mean?
-                        </button>
-                        {showXgHelper && (
-                          <p className="text-[10px] text-zinc-500 leading-relaxed text-center mt-2 px-1 select-none">
-                            Expected Goals (xG) measures shot quality. A shot with 0.40 xG means a player scores that chance 40% of the time. xG on target (xGOT) measures execution after the shot was taken (on-target shots only).
-                          </p>
-                        )}
-                      </div>
+                <>
+                  {/* xG stat rows — identical StatRow style as Top Stats */}
+                  <StatRow label="Expected Goals (xG)"  valueA={teamA.topStats?.xG}             valueB={teamB.topStats?.xG}             format="decimal" />
+                  <StatRow label="xG Open Play"         valueA={teamA.topStats?.xgOpenPlay}     valueB={teamB.topStats?.xgOpenPlay}     format="decimal" />
+                  <StatRow label="xG Set Play"          valueA={teamA.topStats?.xgSetPlay}      valueB={teamB.topStats?.xgSetPlay}      format="decimal" />
+                  <StatRow label="xG On Target (xGOT)" valueA={teamA.topStats?.xgOnTarget}     valueB={teamB.topStats?.xgOnTarget}     format="decimal" />
+                  <StatRow label="Total Shots"          valueA={teamA.topStats?.totalShots}     valueB={teamB.topStats?.totalShots}     />
+                  <StatRow label="Shots on Target"      valueA={teamA.topStats?.shotsOnTarget}  valueB={teamB.topStats?.shotsOnTarget}  />
+                  <StatRow label="Shots off Target"     valueA={teamA.topStats?.shotsOffTarget} valueB={teamB.topStats?.shotsOffTarget} />
+                  <StatRow label="Blocked Shots"        valueA={teamA.topStats?.shotsBlocked}   valueB={teamB.topStats?.shotsBlocked}   />
+                  <StatRow label="Hit Woodwork"         valueA={teamA.topStats?.shotsWoodwork}  valueB={teamB.topStats?.shotsWoodwork}  />
+                  <StatRow label="Shots Inside Box"     valueA={teamA.topStats?.shotsInsideBox} valueB={teamB.topStats?.shotsInsideBox} />
+                  <StatRow label="Shots Outside Box"    valueA={teamA.topStats?.shotsOutsideBox}valueB={teamB.topStats?.shotsOutsideBox}/>
+
+                  {/* Goal Mouth — same #18181B card style as Shot Map, with floating player card overlay */}
+                  <div className="bg-[#18181B]/80 backdrop-blur-[16px] border border-white/5 rounded-xl p-3 shadow-lg mt-3 relative">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-[11px] font-bold tracking-[0.1em] text-[#ECEDEE] uppercase">Goal Mouth</h3>
+                      <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider select-none">
+                        {selectedPlayerId ? 'Click elsewhere to close' : 'Click any shot · analyze player'}
+                      </span>
                     </div>
 
-                    {/* Shots Card */}
-                    <div className="bg-zinc-950/60 backdrop-blur-md rounded-xl border border-white/5 p-4 shadow-lg flex flex-col justify-between">
-                      <div>
-                        <h3 className="text-center text-[11px] font-extrabold uppercase tracking-widest text-[#ECEDEE] mb-4 select-none">
-                          Shots
-                        </h3>
-                        <div className="flex flex-col gap-1">
-                          <AttackingRow
-                            label="Total shots"
-                            valA={teamA.topStats?.totalShots}
-                            valB={teamB.topStats?.totalShots}
-                          />
-                          <AttackingRow
-                            label="Shots off target"
-                            valA={teamA.topStats?.shotsOffTarget}
-                            valB={teamB.topStats?.shotsOffTarget}
-                          />
-                          <AttackingRow
-                            label="Shots on target"
-                            valA={teamA.topStats?.shotsOnTarget}
-                            valB={teamB.topStats?.shotsOnTarget}
-                          />
-                          <AttackingRow
-                            label="Blocked shots"
-                            valA={teamA.topStats?.shotsBlocked}
-                            valB={teamB.topStats?.shotsBlocked}
-                          />
-                          <AttackingRow
-                            label="Hit woodwork"
-                            valA={teamA.topStats?.shotsWoodwork}
-                            valB={teamB.topStats?.shotsWoodwork}
-                          />
-                          <AttackingRow
-                            label="Shots inside box"
-                            valA={teamA.topStats?.shotsInsideBox}
-                            valB={teamB.topStats?.shotsInsideBox}
-                          />
-                          <AttackingRow
-                            label="Shots outside box"
-                            valA={teamA.topStats?.shotsOutsideBox}
-                            valB={teamB.topStats?.shotsOutsideBox}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* INTERACTIVE GOAL MOUTH AND INTERACTIVE PLAYER DETAIL CARD */}
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mt-2">
-                    {/* Goal Mouth Column */}
-                    <div className="lg:col-span-7 bg-zinc-900/60 backdrop-blur-sm border border-white/5 rounded-xl p-4 shadow-lg flex flex-col items-center justify-between">
-                      <div className="w-full flex items-center justify-between mb-2">
-                        <h3 className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 select-none">
-                          Interactive Goal Mouth
-                        </h3>
-                        <span className="text-[9px] text-zinc-500 font-bold uppercase select-none">
-                          Click any shot to analyze player
-                        </span>
-                      </div>
-                      <div className="w-full max-w-[340px] aspect-[1.7] flex items-center justify-center py-2">
-                        <AttackingGoalMouth
-                          shots={shotData?.shots || []}
-                          teamAName={teamA.teamName}
-                          teamBName={teamB.teamName}
-                          onShotSelect={handleShotClick}
-                        />
-                      </div>
-                      <div className="w-full flex justify-center mt-2">
-                        <div className="flex flex-wrap justify-center gap-4 text-[8px] text-zinc-500 font-bold uppercase select-none">
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded bg-[#00E676]" />
-                            Goal
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded bg-[#006FEE]" />
-                            {teamA.teamShort || 'Home'}
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded bg-[#f31260]" />
-                            {teamB.teamShort || 'Away'}
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded border border-white/40" />
-                            Off target
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Interactive Player Detail Card Column */}
-                    <div className="lg:col-span-5 flex">
-                      <AnimatePlayerCard
-                        playerId={selectedPlayerId}
-                        players={players}
-                        teamA={teamA}
-                        teamB={teamB}
-                        statsData={playerProfileStats}
-                        loading={loadingProfile}
-                        onClose={() => setSelectedPlayerId(null)}
+                    {/* SVG + floating card wrapper */}
+                    <div className="w-full relative" style={{ aspectRatio: '2.4' }}>
+                      <AttackingGoalMouth
+                        shots={shotData?.shots || []}
+                        teamAName={teamA.teamName}
+                        teamBName={teamB.teamName}
+                        onShotSelect={handleShotClick}
                       />
+
+                      {/* Floating player card — appears over the goal mouth when a shot is clicked */}
+                      {selectedPlayerId && selectedShot && (() => {
+                        // Position the card so it doesn't overflow: flip horizontally when shot is on the right half
+                        const onRight = (selectedShot.goalX ?? 50) > 50;
+                        return (
+                          <div
+                            className="absolute z-30 w-[220px] pointer-events-auto"
+                            style={{
+                              top: '4%',
+                              ...(onRight ? { left: '4%' } : { right: '4%' }),
+                            }}
+                          >
+                            <AnimatePlayerCard
+                              playerId={selectedPlayerId}
+                              players={players}
+                              teamA={teamA}
+                              teamB={teamB}
+                              statsData={playerProfileStats}
+                              loading={loadingProfile}
+                              onClose={handleClosePlayerCard}
+                            />
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <div className="flex flex-wrap justify-center gap-4 mt-2 text-[8px] text-zinc-500 font-bold uppercase select-none">
+                      <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#00E676]" />Goal</div>
+                      <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#006FEE]" />{teamA.teamShort || 'Home'} on target</div>
+                      <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#f31260]" />{teamB.teamShort || 'Away'} on target</div>
+                      <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full border border-white/30" />Off target</div>
                     </div>
                   </div>
-                </div>
+                </>
               )}
             </div>
           </div>

@@ -298,6 +298,7 @@ const MatchStatsTab = ({ targetPlayer }) => {
             teamA={teamA}
             teamB={teamB}
             selectedTeam={selectedTeam}
+            players={statsData?.players}
           />
         </div>
       ) : (
