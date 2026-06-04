@@ -507,22 +507,32 @@ def get_match_stats(match_id: str):
                     SUM(CASE WHEN event_type_id = 30 AND outcome_id IS NULL
                         AND end_location_x IS NOT NULL AND location_x IS NOT NULL
                         AND (end_location_x - location_x) > 10 THEN 1 ELSE 0 END) AS progressive_passes,
-                    SUM(CASE WHEN event_type_id = 30 AND location_x IS NOT NULL AND location_x <= 60 THEN 1 ELSE 0 END) AS own_half_passes,
-                    SUM(CASE WHEN event_type_id = 30 AND location_x IS NOT NULL AND location_x > 60 THEN 1 ELSE 0 END) AS opp_half_passes,
-                    SUM(CASE WHEN event_type_id = 30 AND pass_length IS NOT NULL AND pass_length > 32 THEN 1 ELSE 0 END) AS long_balls_total,
-                    SUM(CASE WHEN event_type_id = 30 AND pass_length IS NOT NULL AND pass_length > 32 AND outcome_id IS NULL THEN 1 ELSE 0 END) AS long_balls_accurate,
+                    SUM(CASE WHEN event_type_id = 30 AND location_x IS NOT NULL
+                        AND location_x <= 60 THEN 1 ELSE 0 END) AS own_half_passes,
+                    SUM(CASE WHEN event_type_id = 30 AND location_x IS NOT NULL
+                        AND location_x > 60 THEN 1 ELSE 0 END) AS opp_half_passes,
+                    SUM(CASE WHEN event_type_id = 30 AND pass_length IS NOT NULL
+                        AND pass_length > 32 THEN 1 ELSE 0 END) AS long_balls_total,
+                    SUM(CASE WHEN event_type_id = 30 AND pass_length IS NOT NULL
+                        AND pass_length > 32 AND outcome_id IS NULL THEN 1 ELSE 0 END) AS long_balls_accurate,
                     SUM(CASE WHEN event_type_id = 30 AND type_name = 'Cross' THEN 1 ELSE 0 END) AS crosses_total,
-                    SUM(CASE WHEN event_type_id = 30 AND type_name = 'Cross' AND outcome_id IS NULL THEN 1 ELSE 0 END) AS crosses_accurate,
+                    SUM(CASE WHEN event_type_id = 30 AND type_name = 'Cross'
+                        AND outcome_id IS NULL THEN 1 ELSE 0 END) AS crosses_accurate,
                     SUM(CASE WHEN event_type_id = 30 AND type_name = 'Throw-in' THEN 1 ELSE 0 END) AS throws,
-                    SUM(CASE WHEN location_x IS NOT NULL AND location_x > 102 AND location_y IS NOT NULL AND location_y >= 18 AND location_y <= 62 THEN 1 ELSE 0 END) AS opp_box_touches,
+                    SUM(CASE WHEN location_x IS NOT NULL AND location_x > 102
+                        AND location_y IS NOT NULL AND location_y >= 18
+                        AND location_y <= 62 THEN 1 ELSE 0 END) AS opp_box_touches,
                     SUM(CASE WHEN outcome_name = 'Offside' THEN 1 ELSE 0 END) AS offsides,
                     SUM(CASE WHEN event_type_id = 10 THEN 1 ELSE 0 END) AS interceptions,
                     SUM(CASE WHEN event_type_id = 4 THEN 1 ELSE 0 END) AS duels_total,
                     SUM(CASE WHEN event_type_id = 4 AND outcome_name = 'Won' THEN 1 ELSE 0 END) AS duels_won,
                     SUM(CASE WHEN event_type_id = 4 AND type_name = 'Ground' THEN 1 ELSE 0 END) AS ground_duels_total,
-                    SUM(CASE WHEN event_type_id = 4 AND type_name = 'Ground' AND outcome_name = 'Won' THEN 1 ELSE 0 END) AS ground_duels_won,
-                    SUM(CASE WHEN event_type_id = 4 AND type_name = 'Aerial Lost' THEN 1 ELSE 0 END) AS aerial_duels_total,
-                    SUM(CASE WHEN event_type_id = 4 AND type_name IN ('Aerial Lost') AND outcome_name = 'Won' THEN 1 ELSE 0 END) AS aerial_duels_won,
+                    SUM(CASE WHEN event_type_id = 4 AND type_name = 'Ground'
+                        AND outcome_name = 'Won' THEN 1 ELSE 0 END) AS ground_duels_won,
+                    SUM(CASE WHEN event_type_id = 4 AND type_name = 'Aerial Lost'
+                        THEN 1 ELSE 0 END) AS aerial_duels_total,
+                    SUM(CASE WHEN event_type_id = 4 AND type_name IN ('Aerial Lost')
+                        AND outcome_name = 'Won' THEN 1 ELSE 0 END) AS aerial_duels_won,
                     SUM(CASE WHEN event_type_id = 9 THEN 1 ELSE 0 END) AS clearances,
                     SUM(CASE WHEN event_type_id = 6 THEN 1 ELSE 0 END) AS blocks,
                     SUM(CASE WHEN event_type_id = 14 AND outcome_name = 'Complete' THEN 1 ELSE 0 END) AS dribbles_won,
@@ -536,15 +546,22 @@ def get_match_stats(match_id: str):
                     SUM(CASE WHEN xg > 0.3 AND outcome_name != 'Goal' THEN 1 ELSE 0 END) AS big_chances_missed,
                     SUM(CASE WHEN event_type_id = 22 THEN 1 ELSE 0 END) AS fouls,
                     SUM(CASE WHEN type_id = 61 THEN 1 ELSE 0 END) AS corners,
-                    SUM(CASE WHEN event_type_id = 16 THEN (CASE WHEN type_name = 'Open Play' THEN COALESCE(xg, 0) ELSE 0 END) ELSE 0 END) AS xg_open_play,
-                    SUM(CASE WHEN event_type_id = 16 THEN (CASE WHEN type_name != 'Open Play' THEN COALESCE(xg, 0) ELSE 0 END) ELSE 0 END) AS xg_set_play,
-                    SUM(CASE WHEN event_type_id = 16 THEN (CASE WHEN type_name != 'Penalty' THEN COALESCE(xg, 0) ELSE 0 END) ELSE 0 END) AS xg_non_penalty,
-                    SUM(CASE WHEN event_type_id = 16 THEN (CASE WHEN outcome_name = 'Goal' THEN 0.85 WHEN outcome_name = 'Saved' THEN COALESCE(xg, 0) * 0.75 ELSE 0 END) ELSE 0 END) AS xg_on_target,
+                    SUM(CASE WHEN event_type_id = 16 THEN (CASE WHEN type_name = 'Open Play'
+                        THEN COALESCE(xg, 0) ELSE 0 END) ELSE 0 END) AS xg_open_play,
+                    SUM(CASE WHEN event_type_id = 16 THEN (CASE WHEN type_name != 'Open Play'
+                        THEN COALESCE(xg, 0) ELSE 0 END) ELSE 0 END) AS xg_set_play,
+                    SUM(CASE WHEN event_type_id = 16 THEN (CASE WHEN type_name != 'Penalty'
+                        THEN COALESCE(xg, 0) ELSE 0 END) ELSE 0 END) AS xg_non_penalty,
+                    SUM(CASE WHEN event_type_id = 16 THEN (CASE WHEN outcome_name = 'Goal' THEN 0.85
+                        WHEN outcome_name = 'Saved' THEN COALESCE(xg, 0) * 0.75
+                        ELSE 0 END) ELSE 0 END) AS xg_on_target,
                     SUM(CASE WHEN event_type_id = 16 AND outcome_name = 'Off T' THEN 1 ELSE 0 END) AS shots_off_target,
                     SUM(CASE WHEN event_type_id = 16 AND outcome_name = 'Blocked' THEN 1 ELSE 0 END) AS shots_blocked,
                     SUM(CASE WHEN event_type_id = 16 AND outcome_name = 'Post' THEN 1 ELSE 0 END) AS shots_woodwork,
-                    SUM(CASE WHEN event_type_id = 16 AND location_x >= 102 AND location_y >= 18 AND location_y <= 62 THEN 1 ELSE 0 END) AS shots_inside_box,
-                    SUM(CASE WHEN event_type_id = 16 AND (location_x < 102 OR location_y < 18 OR location_y > 62) THEN 1 ELSE 0 END) AS shots_outside_box
+                    SUM(CASE WHEN event_type_id = 16 AND location_x >= 102
+                        AND location_y >= 18 AND location_y <= 62 THEN 1 ELSE 0 END) AS shots_inside_box,
+                    SUM(CASE WHEN event_type_id = 16 AND (location_x < 102
+                        OR location_y < 18 OR location_y > 62) THEN 1 ELSE 0 END) AS shots_outside_box
                 FROM match_events
                 WHERE match_id = :mid AND team_name IS NOT NULL
                 GROUP BY team_name
@@ -718,7 +735,7 @@ def get_match_stats(match_id: str):
             try:
                 tracking_avg_rows = conn.execute(text("""
                     WITH extracted AS (
-                        SELECT 
+                        SELECT
                             (players_data->>'period')::float as period,
                             (elem->>'player_id')::text as tracking_id,
                             (elem->>'x')::float as x,
@@ -727,7 +744,7 @@ def get_match_stats(match_id: str):
                         LATERAL jsonb_array_elements(players_data->'player_data') as elem
                         WHERE match_id = :mid
                     )
-                    SELECT 
+                    SELECT
                         tracking_id,
                         period,
                         AVG(x) as avg_x,
@@ -737,12 +754,12 @@ def get_match_stats(match_id: str):
                     WHERE tracking_id IS NOT NULL AND x IS NOT NULL AND y IS NOT NULL
                     GROUP BY tracking_id, period
                 """), {"mid": match_id}).fetchall()
-                
+
                 # Create team_id to name map
                 team_ids = set(r.team_id for r in roster_rows if r.team_id is not None)
                 team_ids_sorted = sorted(team_ids)
                 home_team_id = team_ids_sorted[1] if len(team_ids_sorted) >= 2 else team_ids_sorted[0]
-                
+
                 results = {}
                 for tr in tracking_avg_rows:
                     tid = tr.tracking_id
@@ -759,10 +776,17 @@ def get_match_stats(match_id: str):
                             # Away team (Real): R->L in M1, L->R in M2
                             x_norm = tr.avg_x if period == 2.0 else -tr.avg_x
                             y_norm = -tr.avg_y if period == 2.0 else tr.avg_y
-                        
+
                         if tid not in results:
-                            results[tid] = {"name": ro.get("name"), "number": ro.get("number"), "team_id": team_id, "x_sum": 0.0, "y_sum": 0.0, "count": 0}
-                        
+                            results[tid] = {
+                                "name": ro.get("name"),
+                                "number": ro.get("number"),
+                                "team_id": team_id,
+                                "x_sum": 0.0,
+                                "y_sum": 0.0,
+                                "count": 0
+                            }
+
                         results[tid]["x_sum"] += x_norm * tr.count
                         results[tid]["y_sum"] += y_norm * tr.count
                         results[tid]["count"] += tr.count
