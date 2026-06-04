@@ -212,6 +212,14 @@ def get_player_profile(match_id: str, player_id: int, state: str = "Drawing"):
     try:
         engine = get_db_engine()
         with engine.connect() as conn:
+            # Translate opta_player_id -> tracking_player_id using dim_player_mapping if possible
+            opta_str = str(player_id)
+            tracking_id = _OPTA_TO_TRACKING.get(opta_str, opta_str)
+            try:
+                pid_val = int(tracking_id)
+            except ValueError:
+                pid_val = player_id
+
             query = text("""
                 SELECT
                     pct_goals, pct_shots, pct_xg, pct_creation, pct_progression, pct_defense
@@ -219,7 +227,7 @@ def get_player_profile(match_id: str, player_id: int, state: str = "Drawing"):
                 WHERE tracking_player_id = :pid AND game_state = :state
                 LIMIT 1
             """)
-            result = conn.execute(query, {"pid": player_id, "state": state}).fetchone()
+            result = conn.execute(query, {"pid": pid_val, "state": state}).fetchone()
             if result:
                 return {
                     "stats": [
@@ -499,14 +507,61 @@ def get_match_stats(match_id: str):
                     SUM(CASE WHEN event_type_id = 30 AND outcome_id IS NULL
                         AND end_location_x IS NOT NULL AND location_x IS NOT NULL
                         AND (end_location_x - location_x) > 10 THEN 1 ELSE 0 END) AS progressive_passes,
+                    SUM(CASE WHEN event_type_id = 30 AND location_x IS NOT NULL
+                        AND location_x <= 60 THEN 1 ELSE 0 END) AS own_half_passes,
+                    SUM(CASE WHEN event_type_id = 30 AND location_x IS NOT NULL
+                        AND location_x > 60 THEN 1 ELSE 0 END) AS opp_half_passes,
+                    SUM(CASE WHEN event_type_id = 30 AND pass_length IS NOT NULL
+                        AND pass_length > 32 THEN 1 ELSE 0 END) AS long_balls_total,
+                    SUM(CASE WHEN event_type_id = 30 AND pass_length IS NOT NULL
+                        AND pass_length > 32 AND outcome_id IS NULL THEN 1 ELSE 0 END) AS long_balls_accurate,
+                    SUM(CASE WHEN event_type_id = 30 AND type_name = 'Cross' THEN 1 ELSE 0 END) AS crosses_total,
+                    SUM(CASE WHEN event_type_id = 30 AND type_name = 'Cross'
+                        AND outcome_id IS NULL THEN 1 ELSE 0 END) AS crosses_accurate,
+                    SUM(CASE WHEN event_type_id = 30 AND type_name = 'Throw-in' THEN 1 ELSE 0 END) AS throws,
+                    SUM(CASE WHEN location_x IS NOT NULL AND location_x > 102
+                        AND location_y IS NOT NULL AND location_y >= 18
+                        AND location_y <= 62 THEN 1 ELSE 0 END) AS opp_box_touches,
+                    SUM(CASE WHEN outcome_name = 'Offside' THEN 1 ELSE 0 END) AS offsides,
                     SUM(CASE WHEN event_type_id = 10 THEN 1 ELSE 0 END) AS interceptions,
+                    SUM(CASE WHEN event_type_id = 4 THEN 1 ELSE 0 END) AS duels_total,
                     SUM(CASE WHEN event_type_id = 4 AND outcome_name = 'Won' THEN 1 ELSE 0 END) AS duels_won,
+                    SUM(CASE WHEN event_type_id = 4 AND type_name = 'Ground' THEN 1 ELSE 0 END) AS ground_duels_total,
+                    SUM(CASE WHEN event_type_id = 4 AND type_name = 'Ground'
+                        AND outcome_name = 'Won' THEN 1 ELSE 0 END) AS ground_duels_won,
+                    SUM(CASE WHEN event_type_id = 4 AND type_name = 'Aerial Lost'
+                        THEN 1 ELSE 0 END) AS aerial_duels_total,
+                    SUM(CASE WHEN event_type_id = 4 AND type_name IN ('Aerial Lost')
+                        AND outcome_name = 'Won' THEN 1 ELSE 0 END) AS aerial_duels_won,
                     SUM(CASE WHEN event_type_id = 9 THEN 1 ELSE 0 END) AS clearances,
+                    SUM(CASE WHEN event_type_id = 6 THEN 1 ELSE 0 END) AS blocks,
+                    SUM(CASE WHEN event_type_id = 14 AND outcome_name = 'Complete' THEN 1 ELSE 0 END) AS dribbles_won,
+                    SUM(CASE WHEN event_type_id = 14 THEN 1 ELSE 0 END) AS dribbles_total,
+                    SUM(CASE WHEN event_type_id = 23 THEN 1 ELSE 0 END) AS keeper_saves,
+                    SUM(CASE WHEN event_type_id = 27 THEN 1 ELSE 0 END) AS tackles,
+                    SUM(CASE WHEN type_name = 'Yellow Card' THEN 1 ELSE 0 END) AS yellow_cards,
+                    SUM(CASE WHEN type_name = 'Red Card' THEN 1 ELSE 0 END) AS red_cards,
                     SUM(xg) AS total_xg,
                     SUM(CASE WHEN xg > 0.3 THEN 1 ELSE 0 END) AS big_chances,
                     SUM(CASE WHEN xg > 0.3 AND outcome_name != 'Goal' THEN 1 ELSE 0 END) AS big_chances_missed,
                     SUM(CASE WHEN event_type_id = 22 THEN 1 ELSE 0 END) AS fouls,
-                    SUM(CASE WHEN type_id = 61 THEN 1 ELSE 0 END) AS corners
+                    SUM(CASE WHEN type_id = 61 THEN 1 ELSE 0 END) AS corners,
+                    SUM(CASE WHEN event_type_id = 16 THEN (CASE WHEN type_name = 'Open Play'
+                        THEN COALESCE(xg, 0) ELSE 0 END) ELSE 0 END) AS xg_open_play,
+                    SUM(CASE WHEN event_type_id = 16 THEN (CASE WHEN type_name != 'Open Play'
+                        THEN COALESCE(xg, 0) ELSE 0 END) ELSE 0 END) AS xg_set_play,
+                    SUM(CASE WHEN event_type_id = 16 THEN (CASE WHEN type_name != 'Penalty'
+                        THEN COALESCE(xg, 0) ELSE 0 END) ELSE 0 END) AS xg_non_penalty,
+                    SUM(CASE WHEN event_type_id = 16 THEN (CASE WHEN outcome_name = 'Goal' THEN 0.85
+                        WHEN outcome_name = 'Saved' THEN COALESCE(xg, 0) * 0.75
+                        ELSE 0 END) ELSE 0 END) AS xg_on_target,
+                    SUM(CASE WHEN event_type_id = 16 AND outcome_name = 'Off T' THEN 1 ELSE 0 END) AS shots_off_target,
+                    SUM(CASE WHEN event_type_id = 16 AND outcome_name = 'Blocked' THEN 1 ELSE 0 END) AS shots_blocked,
+                    SUM(CASE WHEN event_type_id = 16 AND outcome_name = 'Post' THEN 1 ELSE 0 END) AS shots_woodwork,
+                    SUM(CASE WHEN event_type_id = 16 AND location_x >= 102
+                        AND location_y >= 18 AND location_y <= 62 THEN 1 ELSE 0 END) AS shots_inside_box,
+                    SUM(CASE WHEN event_type_id = 16 AND (location_x < 102
+                        OR location_y < 18 OR location_y > 62) THEN 1 ELSE 0 END) AS shots_outside_box
                 FROM match_events
                 WHERE match_id = :mid AND team_name IS NOT NULL
                 GROUP BY team_name
@@ -563,20 +618,53 @@ def get_match_stats(match_id: str):
                         "accuratePasses": ap,
                         "passAccuracy": pacc,
                         "fouls": int(r.fouls or 0),
-                        "corners": int(r.corners or 0)
+                        "corners": int(r.corners or 0),
+                        "xgOpenPlay": round(float(r.xg_open_play or 0), 2),
+                        "xgSetPlay": round(float(r.xg_set_play or 0), 2),
+                        "xgNonPenalty": round(float(r.xg_non_penalty or 0), 2),
+                        "xgOnTarget": round(float(r.xg_on_target or 0), 2),
+                        "shotsOffTarget": int(r.shots_off_target or 0),
+                        "shotsBlocked": int(r.shots_blocked or 0),
+                        "shotsWoodwork": int(r.shots_woodwork or 0),
+                        "shotsInsideBox": int(r.shots_inside_box or 0),
+                        "shotsOutsideBox": int(r.shots_outside_box or 0)
                     },
                     "passing": {
-                        "accuratePasses": ap,
-                        "passAccuracy": pacc,
-                        "progressivePasses": int(r.progressive_passes or 0),
+                        "totalPasses":      tp,
+                        "accuratePasses":   ap,
+                        "passAccuracy":     pacc,
+                        "progressivePasses":    int(r.progressive_passes or 0),
+                        "ownHalfPasses":        int(r.own_half_passes or 0),
+                        "oppHalfPasses":        int(r.opp_half_passes or 0),
+                        "longBallsTotal":       int(r.long_balls_total or 0),
+                        "longBallsAccurate":    int(r.long_balls_accurate or 0),
+                        "crossesTotal":         int(r.crosses_total or 0),
+                        "crossesAccurate":      int(r.crosses_accurate or 0),
+                        "throws":               int(r.throws or 0),
+                        "oppBoxTouches":        int(r.opp_box_touches or 0),
+                        "offsides":             int(r.offsides or 0),
                     },
                     "defense": {
-                        "interceptions": int(r.interceptions or 0),
-                        "tacklesWon": int(r.duels_won or 0),
-                        "clearances": int(r.clearances or 0),
+                        "tackles":          int(r.tackles or 0),
+                        "interceptions":    int(r.interceptions or 0),
+                        "blocks":           int(r.blocks or 0),
+                        "clearances":       int(r.clearances or 0),
+                        "keeperSaves":      int(r.keeper_saves or 0),
+                        "duelsWon":         int(r.duels_won or 0),
+                        "duelsTotal":       int(r.duels_total or 0),
+                        "groundDuelsWon":   int(r.ground_duels_won or 0),
+                        "groundDuelsTotal": int(r.ground_duels_total or 0),
+                        "aerialDuelsWon":   int(r.aerial_duels_won or 0),
+                        "aerialDuelsTotal": int(r.aerial_duels_total or 0),
+                        "dribblesWon":      int(r.dribbles_won or 0),
+                        "dribblesTotal":    int(r.dribbles_total or 0),
+                        "yellowCards":      int(r.yellow_cards or 0),
+                        "redCards":         int(r.red_cards or 0),
+                        "foulsCommitted":   int(r.fouls or 0),
                     },
                     "passNetwork": [],
-                    "averagePositions": []
+                    "averagePositions": [],
+                    "averagePositionsTracking": []
                 }
 
             # Build a name→dorsal map from match_players for jersey numbers
@@ -629,6 +717,109 @@ def get_match_stats(match_id: str):
                         "y": round(float(ar.avg_y) / 0.8, 1)
                     })
 
+            # Fetch roster info from match_players
+            roster_rows = conn.execute(text(
+                "SELECT player_id, team_id, name, dorsal, position FROM match_players WHERE match_id = :mid"
+            ), {"mid": match_id}).fetchall()
+
+            # Build roster map keyed by tracking_player_id
+            roster_by_tracking = {}
+            for r in roster_rows:
+                roster_by_tracking[str(r.player_id)] = {
+                    "team_id": r.team_id, "name": r.name,
+                    "number": r.dorsal, "position": r.position,
+                }
+
+            # 2.5 Compute tracking-based average positions
+            tracking_avg_rows = []
+            try:
+                tracking_avg_rows = conn.execute(text("""
+                    WITH extracted AS (
+                        SELECT
+                            (players_data->>'period')::float as period,
+                            (elem->>'player_id')::text as tracking_id,
+                            (elem->>'x')::float as x,
+                            (elem->>'y')::float as y
+                        FROM match_tracking,
+                        LATERAL jsonb_array_elements(players_data->'player_data') as elem
+                        WHERE match_id = :mid
+                    )
+                    SELECT
+                        tracking_id,
+                        period,
+                        AVG(x) as avg_x,
+                        AVG(y) as avg_y,
+                        COUNT(*) as count
+                    FROM extracted
+                    WHERE tracking_id IS NOT NULL AND x IS NOT NULL AND y IS NOT NULL
+                    GROUP BY tracking_id, period
+                """), {"mid": match_id}).fetchall()
+
+                # Create team_id to name map
+                team_ids = set(r.team_id for r in roster_rows if r.team_id is not None)
+                team_ids_sorted = sorted(team_ids)
+                home_team_id = team_ids_sorted[1] if len(team_ids_sorted) >= 2 else team_ids_sorted[0]
+
+                results = {}
+                for tr in tracking_avg_rows:
+                    tid = tr.tracking_id
+                    period = tr.period
+                    ro = roster_by_tracking.get(tid)
+                    if ro:
+                        team_id = ro.get("team_id")
+                        # Determine normalized attacking coordinate based on team and period
+                        if team_id == home_team_id:
+                            # Home team (Atlético): L->R in P1, R->L in P2
+                            x_norm = -tr.avg_x if period == 2.0 else tr.avg_x
+                            y_norm = tr.avg_y if period == 2.0 else -tr.avg_y
+                        else:
+                            # Away team (Real): R->L in M1, L->R in M2
+                            x_norm = tr.avg_x if period == 2.0 else -tr.avg_x
+                            y_norm = -tr.avg_y if period == 2.0 else tr.avg_y
+
+                        if tid not in results:
+                            results[tid] = {
+                                "name": ro.get("name"),
+                                "number": ro.get("number"),
+                                "team_id": team_id,
+                                "x_sum": 0.0,
+                                "y_sum": 0.0,
+                                "count": 0
+                            }
+
+                        results[tid]["x_sum"] += x_norm * tr.count
+                        results[tid]["y_sum"] += y_norm * tr.count
+                        results[tid]["count"] += tr.count
+
+                # Create team_id to name mapping for stats output keys
+                team_id_to_name = {}
+                if len(team_ids_sorted) >= 2:
+                    team_id_to_name[team_ids_sorted[1]] = home_short
+                    team_id_to_name[team_ids_sorted[0]] = away_short
+                elif len(team_ids_sorted) == 1:
+                    team_id_to_name[team_ids_sorted[0]] = home_short
+
+                _TRACKING_TO_OPTA = {v: k for k, v in _OPTA_TO_TRACKING.items()}
+
+                for tid, data in results.items():
+                    if data["count"] > 0:
+                        tname = team_id_to_name.get(data["team_id"])
+                        if tname and tname in teams_data:
+                            opta_id = _TRACKING_TO_OPTA.get(tid, tid)
+                            final_x = round(((data["x_sum"] / data["count"] + 52.5) / 105.0) * 100, 1)
+                            final_y = round(((data["y_sum"] / data["count"] + 34.0) / 68.0) * 100, 1)
+                            teams_data[tname]["averagePositionsTracking"].append({
+                                "player_id": opta_id,
+                                "name": data["name"],
+                                "number": data["number"],
+                                "x": final_x,
+                                "y": final_y
+                            })
+            except Exception as track_err:
+                print(f"⚠️ Tracking average positions query error: {track_err}")
+                import traceback
+                traceback.print_exc()
+
             team_a_data = {}
             team_b_data = {}
             team_keys = list(teams_data.keys())
@@ -653,9 +844,36 @@ def get_match_stats(match_id: str):
                 team_b_data = teams_data[team_keys[1]]
                 team_b_data["teamShort"] = away_short
 
+            # Build a name→player_id map from match_players
+            player_id_map = {}
+            try:
+                mp_rows = conn.execute(text(
+                    "SELECT name, player_id FROM match_players WHERE match_id = :mid"
+                ), {"mid": match_id}).fetchall()
+                for mp in mp_rows:
+                    if mp.name and mp.player_id:
+                        player_id_map[mp.name.lower()] = str(mp.player_id)
+            except Exception:
+                pass
+
+            def find_player_id(full_name):
+                if not full_name:
+                    return None
+                fn_lower = full_name.lower()
+                if fn_lower in player_id_map:
+                    return player_id_map[fn_lower]
+                parts = fn_lower.split()
+                for last in reversed(parts):
+                    if len(last) < 3:
+                        continue
+                    for key, pid in player_id_map.items():
+                        if last in key or key.endswith(last):
+                            return pid
+                return None
+
             player_rows = conn.execute(text("""
                 SELECT
-                    e.player_id, e.player_name, e.team_name,
+                    e.player_name, e.team_name,
                     SUM(CASE WHEN event_type_id = 16 AND outcome_id = 97 THEN 1 ELSE 0 END) AS goals,
                     SUM(CASE WHEN event_type_id = 16 THEN 1 ELSE 0 END) AS shots,
                     SUM(CASE WHEN event_type_id = 16 AND (type_id = 88 OR outcome_id = 97)
@@ -671,36 +889,26 @@ def get_match_stats(match_id: str):
                     SUM(CASE WHEN event_type_id IN (30, 42, 43, 16, 14, 38, 6) THEN 1 ELSE 0 END) AS touches,
                     MAX(minute) AS last_minute
                 FROM match_events e
-                WHERE e.match_id = :mid AND e.player_id IS NOT NULL
-                GROUP BY e.player_id, e.player_name, e.team_name
+                WHERE e.match_id = :mid AND e.player_name IS NOT NULL
+                GROUP BY e.player_name, e.team_name
             """), {"mid": match_id}).fetchall()
-
-            roster_rows = conn.execute(text(
-                "SELECT player_id, team_id, name, dorsal, position FROM match_players WHERE match_id = :mid"
-            ), {"mid": match_id}).fetchall()
-
-            # Build roster map keyed by tracking_player_id
-            roster_by_tracking = {}
-            for r in roster_rows:
-                roster_by_tracking[str(r.player_id)] = {
-                    "team_id": r.team_id, "name": r.name,
-                    "number": r.dorsal, "position": r.position,
-                }
 
             players = {}
             for r in player_rows:
-                pid = str(r.player_id)  # This is the opta_player_id
+                dn = r.player_name or "Unknown"
+                pid = find_player_id(dn)
+                if not pid:
+                    pid = str(hash(dn))
                 # Translate opta -> tracking to find roster info
                 tracking_id = _OPTA_TO_TRACKING.get(pid, pid)
                 ro = roster_by_tracking.get(tracking_id, {})
                 tp = int(r.total_passes or 0)
                 pc = int(r.passes_completed or 0)
                 pacc = round((pc / tp) * 100) if tp > 0 else 0
-                dn = ro.get("name") or r.player_name or "Unknown"
 
                 players[pid] = {
                     "info": {
-                        "id": pid, "name": r.player_name or dn, "shortName": dn,
+                        "id": pid, "name": r.player_name or dn, "shortName": ro.get("name") or dn,
                         "number": ro.get("number", 0), "position": ro.get("position", "?"),
                         "teamId": str(ro.get("team_id", "")), "teamName": r.team_name or "",
                     },
@@ -723,6 +931,170 @@ def get_match_stats(match_id: str):
         print(f"âŒ Error fetching match stats: {e}")
         import traceback
         traceback.print_exc()
+        return {"error": str(e)}
+
+
+@app.get("/match/{match_id}/shots")
+def get_match_shots(match_id: str):
+    """
+    Obtiene los tiros del partido para el Shot Map.
+    """
+    engine = get_db_engine()
+    try:
+        with engine.connect() as conn:
+            # 1. Obtener nombres de equipos
+            match_info = conn.execute(text(
+                "SELECT home_team_name, away_team_name FROM matches WHERE match_id = :mid"
+            ), {"mid": match_id}).fetchone()
+
+            if not match_info:
+                return {"error": "Match not found"}
+
+            home_team = match_info.home_team_name or "HOME"
+            away_team = match_info.away_team_name or "AWAY"
+
+            # Build a name→player_id map from match_players
+            player_id_map = {}
+            try:
+                mp_rows = conn.execute(text(
+                    "SELECT name, player_id FROM match_players WHERE match_id = :mid"
+                ), {"mid": match_id}).fetchall()
+                for mp in mp_rows:
+                    if mp.name and mp.player_id:
+                        player_id_map[mp.name.lower()] = str(mp.player_id)
+            except Exception:
+                pass
+
+            def find_player_id(full_name):
+                if not full_name:
+                    return None
+                fn_lower = full_name.lower()
+                if fn_lower in player_id_map:
+                    return player_id_map[fn_lower]
+                parts = fn_lower.split()
+                for last in reversed(parts):
+                    if len(last) < 3:
+                        continue
+                    for key, pid in player_id_map.items():
+                        if last in key or key.endswith(last):
+                            return pid
+                return None
+
+            # 2. Obtener todos los tiros (event_type_id = 16)
+            shot_rows = conn.execute(text("""
+                SELECT
+                    minute, player_id, player_name, team_name, xg, outcome_name, type_id, outcome_id,
+                    location_x, location_y, end_location_y, end_location_z
+                FROM match_events
+                WHERE match_id = :mid AND event_type_id = 16
+                ORDER BY minute, second
+            """), {"mid": match_id}).fetchall()
+
+            shots = []
+            for r in shot_rows:
+                # Determinar si es gol o a puerta
+                is_goal = (r.outcome_id == 97 or r.outcome_name == 'Goal')
+                on_target = (
+                    r.outcome_id == 97 or
+                    r.type_id == 88 or
+                    r.outcome_name in ('Goal', 'Saved', 'Post')
+                )
+
+                # Calcular goalX (end_location_y de 36 a 44)
+                ey = r.end_location_y
+                if ey is not None:
+                    # mapear de [36, 44] a [0, 100]
+                    goal_x = max(0.0, min(100.0, ((float(ey) - 36.0) / 8.0) * 100.0))
+                else:
+                    goal_x = 50.0
+
+                # Calcular goalY (end_location_z de 0 a 2.4)
+                ez = r.end_location_z
+                if ez is not None:
+                    # mapear de [0, 2.4] a [100, 0] (0 arriba en la barra, 100 abajo en el suelo)
+                    goal_y = max(0.0, min(100.0, ((2.4 - float(ez)) / 2.4) * 100.0))
+                else:
+                    goal_y = 100.0 if not on_target else 50.0
+
+                db_pid = r.player_id
+                pid = str(db_pid) if db_pid else find_player_id(r.player_name)
+
+                shots.append({
+                    "minute": int(r.minute or 0),
+                    "player_id": pid,
+                    "player": r.player_name or "Unknown Player",
+                    "team": r.team_name or "Unknown Team",
+                    "xg": round(float(r.xg or 0.0), 3),
+                    "outcome": r.outcome_name or "Shot",
+                    "isGoal": bool(is_goal),
+                    "onTarget": bool(on_target),
+                    "pitchX": round(float(r.location_x or 0.0), 1),
+                    "pitchY": round(float(r.location_y or 0.0), 1),
+                    "goalX": round(goal_x, 1),
+                    "goalY": round(goal_y, 1)
+                })
+
+            return clean_nans({
+                "home": home_team,
+                "away": away_team,
+                "shots": shots
+            })
+    except Exception as e:
+        print(f"❌ Error fetching match shots: {e}")
+        return {"error": str(e)}
+
+
+@app.get("/match/{match_id}/momentum")
+def get_match_momentum(match_id: str):
+    """
+    Obtiene los datos de momentum minuto a minuto.
+    """
+    engine = get_db_engine()
+    try:
+        with engine.connect() as conn:
+            # 1. Obtener nombres de equipos
+            match_info = conn.execute(text(
+                "SELECT home_team_name, away_team_name FROM matches WHERE match_id = :mid"
+            ), {"mid": match_id}).fetchone()
+
+            if not match_info:
+                return {"error": "Match not found"}
+
+            home_team = match_info.home_team_name or "HOME"
+            away_team = match_info.away_team_name or "AWAY"
+
+            # 2. Calcular pases en campo rival por minuto
+            momentum_rows = conn.execute(text("""
+                SELECT
+                    minute,
+                    SUM(CASE WHEN team_name = :home AND location_x > 60 THEN 1 ELSE 0 END) AS home_val,
+                    SUM(CASE WHEN team_name = :away AND location_x > 60 THEN 1 ELSE 0 END) AS away_val
+                FROM match_events
+                WHERE match_id = :mid AND event_type_id = 30 AND outcome_id IS NULL
+                GROUP BY minute
+                ORDER BY minute
+            """), {"mid": match_id, "home": home_team, "away": away_team}).fetchall()
+
+            # Rellenar todos los minutos del 1 al 90 (o al máximo minuto jugado)
+            max_minute = max([int(r.minute or 0) for r in momentum_rows] + [90])
+            minute_map = {int(r.minute): r for r in momentum_rows if r.minute is not None}
+
+            data = []
+            for m in range(1, max_minute + 1):
+                row = minute_map.get(m)
+                data.append({
+                    "minute": m,
+                    "home": int(row.home_val or 0) if row else 0,
+                    "away": int(row.away_val or 0) if row else 0
+                })
+
+            return clean_nans({
+                "home": home_team,
+                "away": away_team,
+                "data": data
+            })
+    except Exception as e:
+        print(f"❌ Error fetching match momentum: {e}")
         return {"error": str(e)}
 
 

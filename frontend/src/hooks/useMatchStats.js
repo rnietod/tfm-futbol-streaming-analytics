@@ -92,3 +92,64 @@ export const usePlayerPitchData = (matchId, playerId) => {
 
   return { pitchData, isLoading };
 };
+
+
+/**
+ * Hook para obtener los disparos del partido (Shot Map)
+ */
+export const useShotMap = (matchId) => {
+  const [shotData, setShotData] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!matchId) return;
+
+    let cancelled = false;
+    fetch(`${API_BASE}/match/${matchId}/shots`)
+      .then(res => res.json())
+      .then(data => {
+        if (!cancelled && !data.error) {
+          setShotData(data);
+        }
+      })
+      .catch(err => console.error('❌ useShotMap error:', err))
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [matchId]);
+
+  return { shotData, isLoading };
+};
+
+
+/**
+ * Hook para obtener el momentum del partido minuto a minuto
+ */
+export const useMomentum = (matchId) => {
+  const [momentumData, setMomentumData] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!matchId) return;
+
+    let cancelled = false;
+    fetch(`${API_BASE}/match/${matchId}/momentum`)
+      .then(res => res.json())
+      .then(data => {
+        if (!cancelled && !data.error) {
+          setMomentumData(data);
+        }
+      })
+      .catch(err => console.error('❌ useMomentum error:', err))
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [matchId]);
+
+  return { momentumData, isLoading };
+};
+
