@@ -1163,3 +1163,245 @@ def get_player_pitch_data(match_id: str, player_id: str):
     except Exception as e:
         print(f"❌ Error fetching player pitch data: {e}")
         return {"error": str(e)}
+
+
+# ==========================================
+# 🏃 MÉTRICAS FÍSICAS DE TRACKING
+# ==========================================
+
+def _get_or_compute_metrics(match_id: str, force_recalc: bool = False) -> dict:
+    """
+    Lógica de cache en dos capas:
+      1. Redis (TTL 60s) — más rápido, se invalida automáticamente
+      2. PostgreSQL player_tracking_metrics — persistente entre reinicios
+
+    Si ninguna capa tiene datos (o force_recalc=True), lanza el motor de cálculo.
+    """
+    from src.services.tracking_metrics import TrackingMetricsEngine
+
+    REDIS_KEY = f"match:{match_id}:tracking_metrics"
+    engine_db = get_db_engine()
+
+    # ── Capa 1: Redis ────────────────────────────────────────────────────────
+    if not force_recalc and redis_conn:
+        try:
+            cached = redis_conn.get(REDIS_KEY)
+            if cached:
+                print(f"[TrackingMetrics] Cache HIT Redis para {match_id}")
+                return json.loads(cached)
+        except Exception as e:
+            print(f"⚠️ Redis cache error (non-fatal): {e}")
+
+    # ── Capa 2: PostgreSQL ───────────────────────────────────────────────────
+    if not force_recalc:
+        try:
+            with engine_db.connect() as conn:
+                rows = conn.execute(text("""
+                    SELECT
+                        player_id, total_distance_m, max_speed_ms, max_speed_kmh,
+                        max_speed_at_second, max_speed_at_period,
+                        distance_sprint_m, distance_run_m, distance_walk_m,
+                        speed_per_second, frames_processed
+                    FROM player_tracking_metrics
+                    WHERE match_id = :mid
+                    ORDER BY player_id
+                """), {"mid": match_id}).fetchall()
+
+                if rows:
+                    players = {}
+                    total_frames = 0
+                    for r in rows:
+                        pid = str(r.player_id)
+                        spd = r.speed_per_second
+                        if isinstance(spd, str):
+                            spd = json.loads(spd)
+                        players[pid] = {
+                            "player_id": r.player_id,
+                            "total_distance_m": r.total_distance_m,
+                            "max_speed_ms": r.max_speed_ms,
+                            "max_speed_kmh": r.max_speed_kmh,
+                            "max_speed_at_second": r.max_speed_at_second,
+                            "max_speed_at_period": r.max_speed_at_period,
+                            "distance_sprint_m": r.distance_sprint_m,
+                            "distance_run_m": r.distance_run_m,
+                            "distance_walk_m": r.distance_walk_m,
+                            "frames_processed": r.frames_processed,
+                            "speed_per_second": spd or [],
+                        }
+                        total_frames = max(total_frames, r.frames_processed or 0)
+
+                    result = {
+                        "match_id": match_id,
+                        "frames_processed": total_frames,
+                        "players": players,
+                        "source": "db_cache",
+                    }
+                    print(f"[TrackingMetrics] Cache HIT PostgreSQL para {match_id} — {len(players)} jugadores")
+
+                    # Re-poblar Redis
+                    if redis_conn:
+                        try:
+                            redis_conn.setex(REDIS_KEY, 60, json.dumps(result))
+                        except Exception:
+                            pass
+                    return result
+        except Exception as e:
+            print(f"⚠️ DB cache error (non-fatal): {e}")
+
+    # ── Capa 3: Cálculo en tiempo real ───────────────────────────────────────
+    print(f"[TrackingMetrics] Calculando métricas en tiempo real para {match_id}...")
+    metrics_engine = TrackingMetricsEngine()
+    result = metrics_engine.compute_for_match(match_id)
+    result["source"] = "computed"
+
+    # Persistir en PostgreSQL
+    if result["players"]:
+        try:
+            with engine_db.begin() as conn:
+                for pid_str, data in result["players"].items():
+                    spd_json = json.dumps(data.get("speed_per_second", []))
+                    conn.execute(text("""
+                        INSERT INTO player_tracking_metrics (
+                            match_id, player_id,
+                            total_distance_m, max_speed_ms, max_speed_kmh,
+                            max_speed_at_second, max_speed_at_period,
+                            distance_sprint_m, distance_run_m, distance_walk_m,
+                            speed_per_second, frames_processed,
+                            calculated_at
+                        ) VALUES (
+                            :mid, :pid,
+                            :tot, :ms, :kmh,
+                            :ts, :per,
+                            :spr, :run, :wal,
+                            :spd::jsonb, :frm,
+                            CURRENT_TIMESTAMP
+                        )
+                        ON CONFLICT (match_id, player_id) DO UPDATE SET
+                            total_distance_m   = EXCLUDED.total_distance_m,
+                            max_speed_ms       = EXCLUDED.max_speed_ms,
+                            max_speed_kmh      = EXCLUDED.max_speed_kmh,
+                            max_speed_at_second = EXCLUDED.max_speed_at_second,
+                            max_speed_at_period = EXCLUDED.max_speed_at_period,
+                            distance_sprint_m  = EXCLUDED.distance_sprint_m,
+                            distance_run_m     = EXCLUDED.distance_run_m,
+                            distance_walk_m    = EXCLUDED.distance_walk_m,
+                            speed_per_second   = EXCLUDED.speed_per_second,
+                            frames_processed   = EXCLUDED.frames_processed,
+                            calculated_at      = CURRENT_TIMESTAMP
+                    """), {
+                        "mid": match_id,
+                        "pid": data["player_id"],
+                        "tot": data["total_distance_m"],
+                        "ms":  data["max_speed_ms"],
+                        "kmh": data["max_speed_kmh"],
+                        "ts":  data["max_speed_at_second"],
+                        "per": data["max_speed_at_period"],
+                        "spr": data["distance_sprint_m"],
+                        "run": data["distance_run_m"],
+                        "wal": data["distance_walk_m"],
+                        "spd": spd_json,
+                        "frm": data["frames_processed"],
+                    })
+            print(f"[TrackingMetrics] ✅ {len(result['players'])} jugadores persistidos en DB")
+        except Exception as e:
+            print(f"⚠️ Error persistiendo métricas en DB: {e}")
+            import traceback; traceback.print_exc()
+
+    # Guardar en Redis
+    if redis_conn:
+        try:
+            redis_conn.setex(REDIS_KEY, 60, json.dumps(result))
+        except Exception:
+            pass
+
+    return result
+
+
+@app.get("/match/{match_id}/tracking/metrics")
+def get_tracking_metrics(
+    match_id: str,
+    force_recalc: bool = Query(False, description="Forzar recálculo ignorando cache")
+):
+    """
+    Métricas físicas de tracking para todos los jugadores del partido.
+
+    Devuelve por jugador:
+    - Distancia total recorrida (m)
+    - Velocidad máxima (m/s y km/h) y el segundo del partido en que se alcanzó
+    - Distancia Carrera   (> 75 % de v_max personal)
+    - Distancia Trotada   (25 – 75 % de v_max personal)
+    - Distancia Caminada  (< 25 % de v_max personal)
+
+    Cache en Redis (TTL 60s) y PostgreSQL.
+    Usar ?force_recalc=true para forzar recálculo con los últimos frames de DB.
+    """
+    try:
+        result = _get_or_compute_metrics(match_id, force_recalc=force_recalc)
+
+        # Versión compacta: sin speed_per_second (demasiados datos para la vista global)
+        compact_players = []
+        for pid_str, data in result.get("players", {}).items():
+            compact_players.append({
+                "player_id": data["player_id"],
+                "total_distance_m": data["total_distance_m"],
+                "max_speed_ms": data["max_speed_ms"],
+                "max_speed_kmh": data["max_speed_kmh"],
+                "max_speed_at_second": data["max_speed_at_second"],
+                "max_speed_at_period": data["max_speed_at_period"],
+                "distance_sprint_m": data["distance_sprint_m"],
+                "distance_run_m": data["distance_run_m"],
+                "distance_walk_m": data["distance_walk_m"],
+                "frames_processed": data["frames_processed"],
+            })
+
+        # Ordenar por distancia total descendente
+        compact_players.sort(key=lambda p: p["total_distance_m"], reverse=True)
+
+        return clean_nans({
+            "match_id": match_id,
+            "frames_processed": result.get("frames_processed", 0),
+            "source": result.get("source", "unknown"),
+            "players": compact_players,
+        })
+
+    except Exception as e:
+        print(f"❌ Error en tracking metrics: {e}")
+        import traceback; traceback.print_exc()
+        return {"error": str(e)}
+
+
+@app.get("/match/{match_id}/player/{player_id}/tracking/metrics")
+def get_player_tracking_metrics(
+    match_id: str,
+    player_id: int,
+    force_recalc: bool = Query(False, description="Forzar recálculo ignorando cache")
+):
+    """
+    Métricas físicas de tracking para un jugador específico.
+
+    Incluye el campo `speed_per_second` con la velocidad segundo a segundo
+    para renderizar gráficas de evolución de velocidad durante el partido.
+
+    Formato de speed_per_second:
+        [ { "second": 0, "speed_ms": 0.0, "speed_kmh": 0.0 }, ... ]
+    """
+    try:
+        result = _get_or_compute_metrics(match_id, force_recalc=force_recalc)
+        players = result.get("players", {})
+
+        player_data = players.get(str(player_id))
+        if not player_data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Jugador {player_id} no encontrado en las métricas de tracking del partido {match_id}"
+            )
+
+        return clean_nans(player_data)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error en player tracking metrics: {e}")
+        import traceback; traceback.print_exc()
+        return {"error": str(e)}
+
