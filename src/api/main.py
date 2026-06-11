@@ -1305,7 +1305,8 @@ def _get_or_compute_metrics(match_id: str, force_recalc: bool = False) -> dict:
             print(f"[TrackingMetrics] ✅ {len(result['players'])} jugadores persistidos en DB")
         except Exception as e:
             print(f"⚠️ Error persistiendo métricas en DB: {e}")
-            import traceback; traceback.print_exc()
+            import traceback
+            traceback.print_exc()
 
     # Guardar en Redis
     if redis_conn:
@@ -1366,7 +1367,8 @@ def get_tracking_metrics(
 
     except Exception as e:
         print(f"❌ Error en tracking metrics: {e}")
-        import traceback; traceback.print_exc()
+        import traceback
+        traceback.print_exc()
         return {"error": str(e)}
 
 
@@ -1402,6 +1404,6 @@ def get_player_tracking_metrics(
         raise
     except Exception as e:
         print(f"❌ Error en player tracking metrics: {e}")
-        import traceback; traceback.print_exc()
+        import traceback
+        traceback.print_exc()
         return {"error": str(e)}
-
