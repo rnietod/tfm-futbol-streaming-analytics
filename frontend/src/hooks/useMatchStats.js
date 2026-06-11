@@ -125,6 +125,41 @@ export const useShotMap = (matchId) => {
 
 
 /**
+ * Hook para métricas físicas de tracking (distancias y velocidades).
+ * El backend cachea en Redis con TTL 60s, así que el polling usa el mismo intervalo.
+ */
+export const useTrackingMetrics = (matchId) => {
+  const [trackingMetrics, setTrackingMetrics] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!matchId) return;
+
+    let cancelled = false;
+    const fetchMetrics = () => {
+      fetch(`${API_BASE}/match/${matchId}/tracking/metrics`)
+        .then(res => res.json())
+        .then(data => {
+          if (!cancelled && !data.error) {
+            setTrackingMetrics(data);
+          }
+        })
+        .catch(err => console.error('❌ useTrackingMetrics error:', err))
+        .finally(() => {
+          if (!cancelled) setIsLoading(false);
+        });
+    };
+
+    fetchMetrics();
+    const interval = setInterval(fetchMetrics, 60000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [matchId]);
+
+  return { trackingMetrics, isLoading };
+};
+
+
+/**
  * Hook para obtener el momentum del partido minuto a minuto
  */
 export const useMomentum = (matchId) => {

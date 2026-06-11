@@ -6,7 +6,8 @@ import PassingNetworkPitch from './PassingNetworkPitch';
 import ShotMapViz from './ShotMapViz';
 import MomentumChart from './MomentumChart';
 import AccuratePassesViz from './AccuratePassesViz';
-import { useShotMap, useMomentum } from '../../hooks/useMatchStats';
+import PhysicalMetricsViz from './PhysicalMetricsViz';
+import { useShotMap, useMomentum, useTrackingMetrics } from '../../hooks/useMatchStats';
 
 // ============================================================
 // TEAM COMPARISON — Desktop-first layout
@@ -104,6 +105,8 @@ const StatRow = ({ label, valueA, valueB, format = 'number' }) => {
   const fmt = (v) => {
     if (format === 'decimal') return parseFloat(v || 0).toFixed(2);
     if (format === 'pct')     return `${v ?? 0}%`;
+    if (format === 'km')      return `${parseFloat(v || 0).toFixed(1)} km`;
+    if (format === 'kmh')     return `${parseFloat(v || 0).toFixed(1)} km/h`;
     return v ?? 0;
   };
 
@@ -147,7 +150,7 @@ const StatRow = ({ label, valueA, valueB, format = 'number' }) => {
 };
 
 // ── STATS SECTION TABS ───────────────────────────────────────
-const STAT_SECTIONS = ['Top Stats', 'Attacking', 'Defending', 'Passing', 'Fouls'];
+const STAT_SECTIONS = ['Top Stats', 'Attacking', 'Defending', 'Passing', 'Physical'];
 
 const buildSections = (teamA, teamB) => ({
   'Top Stats': [
@@ -182,10 +185,6 @@ const buildSections = (teamA, teamB) => ({
     { label: 'Throws',              valueA: teamA.passing?.throws,           valueB: teamB.passing?.throws           },
     { label: 'Touches in Opp Box', valueA: teamA.passing?.oppBoxTouches,    valueB: teamB.passing?.oppBoxTouches    },
     { label: 'Offsides',            valueA: teamA.passing?.offsides,         valueB: teamB.passing?.offsides         },
-  ],
-  'Fouls': [
-    { label: 'Fouls',        valueA: teamA.topStats?.fouls,   valueB: teamB.topStats?.fouls   },
-    { label: 'Corner Kicks', valueA: teamA.topStats?.corners, valueB: teamB.topStats?.corners },
   ],
 });
 
@@ -471,15 +470,40 @@ const TeamComparison = ({ teamA, teamB, selectedTeam, players }) => {
   // Fetch shot map & momentum data
   const { shotData } = useShotMap(MATCH_ID);
   const { momentumData } = useMomentum(MATCH_ID);
+  const { trackingMetrics } = useTrackingMetrics(MATCH_ID);
 
-  // Fetch player profile stats when selectedPlayerId changes
+  // Team-level aggregation of physical tracking metrics (Physical tab)
+  const physical = React.useMemo(() => {
+    const A = { dist: 0, walk: 0, run: 0, sprint: 0, topSpeed: 0 };
+    const B = { dist: 0, walk: 0, run: 0, sprint: 0, topSpeed: 0 };
+    (trackingMetrics?.players || []).forEach(m => {
+      const info = players?.[m.player_id]?.info;
+      if (!info) return; // jugador de tracking sin mapear al roster
+      const t = info.teamName === teamA?.teamName ? A
+              : info.teamName === teamB?.teamName ? B : null;
+      if (!t) return;
+      t.dist   += m.total_distance_m  || 0;
+      t.walk   += m.distance_walk_m   || 0;
+      t.run    += m.distance_run_m    || 0;
+      t.sprint += m.distance_sprint_m || 0;
+      t.topSpeed = Math.max(t.topSpeed, m.max_speed_kmh || 0);
+    });
+    return { A, B };
+  }, [trackingMetrics, players, teamA?.teamName, teamB?.teamName]);
+
+  // Keep a ref to the latest players so we can read it inside the effect
+  // without triggering re-runs on every render (avoids the infinite-loop).
+  const playersRef = React.useRef(players);
+  useEffect(() => { playersRef.current = players; });
+
+  // Fetch player profile stats when selectedPlayerId OR score changes
   useEffect(() => {
     if (!selectedPlayerId) {
       setPlayerProfileStats(null);
       return;
     }
     setLoadingProfile(true);
-    const player = players?.[selectedPlayerId];
+    const player = playersRef.current?.[selectedPlayerId];
     let gameState = 'Drawing';
     if (player && teamA && teamB) {
       const isHome = player.info.teamName === teamA.teamName;
@@ -520,7 +544,7 @@ const TeamComparison = ({ teamA, teamB, selectedTeam, players }) => {
         ]);
       })
       .finally(() => setLoadingProfile(false));
-  }, [selectedPlayerId, players, teamA?.goals, teamB?.goals]);
+  }, [selectedPlayerId, teamA?.goals, teamB?.goals]); // ← `players` eliminado: es un objeto nuevo en cada render
 
   const handleShotClick = (shot) => {
     console.log("🎯 Attacking Shot Node Clicked:", shot);
@@ -732,7 +756,7 @@ const TeamComparison = ({ teamA, teamB, selectedTeam, players }) => {
                 </>
               )}
 
-              {activeSection !== 'Top Stats' && activeSection !== 'Attacking' && activeSection !== 'Defending' && activeSection !== 'Passing' && (
+              {activeSection !== 'Top Stats' && activeSection !== 'Attacking' && activeSection !== 'Defending' && activeSection !== 'Passing' && activeSection !== 'Physical' && (
                 activeRows.map((row, i) => (
                   <StatRow key={i} {...row} />
                 ))
@@ -853,6 +877,29 @@ const TeamComparison = ({ teamA, teamB, selectedTeam, players }) => {
                       <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full border border-white/30" />Off target</div>
                     </div>
                   </div>
+                </>
+              )}
+
+              {activeSection === 'Physical' && (
+                <>
+                  {/* ── PHYSICAL PERFORMANCE — team totals from tracking data ── */}
+                  <div className="bg-[#18181B]/80 backdrop-blur-[16px] border border-white/5 rounded-xl p-3 shadow-lg mt-1">
+                    <h3 className="text-[11px] font-bold tracking-[0.1em] text-[#ECEDEE] uppercase mb-3">Physical Performance</h3>
+                    <StatRow label="Distance Covered" valueA={physical.A.dist / 1000}   valueB={physical.B.dist / 1000}   format="km"  />
+                    <StatRow label="Walking"          valueA={physical.A.walk / 1000}   valueB={physical.B.walk / 1000}   format="km"  />
+                    <StatRow label="Running"          valueA={physical.A.run / 1000}    valueB={physical.B.run / 1000}    format="km"  />
+                    <StatRow label="Sprinting"        valueA={physical.A.sprint / 1000} valueB={physical.B.sprint / 1000} format="km"  />
+                    <StatRow label="Top Speed"        valueA={physical.A.topSpeed}      valueB={physical.B.topSpeed}      format="kmh" />
+                  </div>
+
+                  {/* ── Per-player load + fastest players ── */}
+                  <PhysicalMetricsViz
+                    trackingMetrics={trackingMetrics}
+                    players={players}
+                    teamA={teamA}
+                    teamB={teamB}
+                    matchId={MATCH_ID}
+                  />
                 </>
               )}
             </div>
