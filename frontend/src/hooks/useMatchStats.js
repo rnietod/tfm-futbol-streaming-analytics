@@ -160,6 +160,80 @@ export const useTrackingMetrics = (matchId) => {
 
 
 /**
+ * Hook para el heatmap posicional de un jugador basado en datos de TRACKING
+ * (match_tracking), no de eventing. Devuelve celdas 0-100 con intensidad 0-1.
+ */
+export const usePlayerTrackingHeatmap = (matchId, playerId) => {
+  const [heatmap, setHeatmap] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!matchId || !playerId) {
+      setHeatmap(null);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoading(true);
+    setHeatmap(null);
+
+    fetch(`${API_BASE}/match/${matchId}/player/${playerId}/tracking/heatmap`)
+      .then(res => res.json())
+      .then(data => {
+        if (!cancelled && !data.error) {
+          setHeatmap(data);
+        }
+      })
+      .catch(err => console.error('❌ usePlayerTrackingHeatmap error:', err))
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [matchId, playerId]);
+
+  return { heatmap, isLoading };
+};
+
+
+/**
+ * Hook para las métricas físicas detalladas de UN jugador
+ * (incluye speed_per_second para la gráfica de velocidad).
+ */
+export const usePlayerTrackingDetail = (matchId, playerId) => {
+  const [detail, setDetail] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!matchId || !playerId) {
+      setDetail(null);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoading(true);
+    setDetail(null);
+
+    fetch(`${API_BASE}/match/${matchId}/player/${playerId}/tracking/metrics`)
+      .then(res => res.json())
+      .then(data => {
+        if (!cancelled && !data.error && !data.detail) {
+          setDetail(data);
+        }
+      })
+      .catch(err => console.error('❌ usePlayerTrackingDetail error:', err))
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [matchId, playerId]);
+
+  return { detail, isLoading };
+};
+
+
+/**
  * Hook para obtener el momentum del partido minuto a minuto
  */
 export const useMomentum = (matchId) => {
