@@ -20,3 +20,13 @@ web-client/coverage
 # DESIGN REFERENCE (TFM)
 # ==========================
 TFM/
+
+# ==========================
+# AI / COLLABORATION WORKING FILES
+# (scratch entre Claude/Gemini y el equipo, no forma parte del entregable)
+# ==========================
+.claude/
+.gemini/
+CLAUDE.md
+CLAUDE.local.md
+fuentes_usadas.md

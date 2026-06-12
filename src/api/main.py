@@ -27,6 +27,8 @@ try:
 except Exception as e:
     print(f"⚠️ Could not load player mapping: {e}")
 
+_TRACKING_TO_OPTA = {v: k for k, v in _OPTA_TO_TRACKING.items()}  # tracking_player_id -> opta_player_id
+
 # --- Process Manager Registry ---
 process_registry = {}
 
@@ -799,8 +801,6 @@ def get_match_stats(match_id: str):
                 elif len(team_ids_sorted) == 1:
                     team_id_to_name[team_ids_sorted[0]] = home_short
 
-                _TRACKING_TO_OPTA = {v: k for k, v in _OPTA_TO_TRACKING.items()}
-
                 for tid, data in results.items():
                     if data["count"] > 0:
                         tname = team_id_to_name.get(data["team_id"])
@@ -1017,7 +1017,11 @@ def get_match_shots(match_id: str):
                     goal_y = 100.0 if not on_target else 50.0
 
                 db_pid = r.player_id
-                pid = str(db_pid) if db_pid else find_player_id(r.player_name)
+                # match_events guarda opta ids: traducir a tracking id (la clave
+                # que usa el frontend en statsData.players) con fallback por nombre
+                pid = _OPTA_TO_TRACKING.get(str(db_pid)) if db_pid else None
+                if not pid:
+                    pid = find_player_id(r.player_name) or (str(db_pid) if db_pid else None)
 
                 shots.append({
                     "minute": int(r.minute or 0),
@@ -1103,8 +1107,12 @@ def get_player_pitch_data(match_id: str, player_id: str):
     """
     Datos de visualizaciÃ³n en campo: heatmap, red de pases, touch map.
     Coordenadas normalizadas 0-100 (desde StatsBomb 0-120 x 0-80).
+
+    El frontend identifica jugadores por tracking_player_id (match_players),
+    pero match_events usa opta_player_id: se traduce antes de consultar.
     """
     engine = get_db_engine()
+    event_pid = _TRACKING_TO_OPTA.get(str(player_id), str(player_id))
 
     try:
         with engine.connect() as conn:
@@ -1113,7 +1121,7 @@ def get_player_pitch_data(match_id: str, player_id: str):
                 FROM match_events
                 WHERE match_id = :mid AND player_id = :pid
                   AND location_x IS NOT NULL AND location_y IS NOT NULL
-            """), {"mid": match_id, "pid": player_id}).fetchall()
+            """), {"mid": match_id, "pid": event_pid}).fetchall()
 
             heatmap = [{
                 "x": round(float(r.location_x) / 1.2, 1),
@@ -1127,7 +1135,7 @@ def get_player_pitch_data(match_id: str, player_id: str):
                 WHERE match_id = :mid AND player_id = :pid
                   AND event_type_id = 30
                   AND location_x IS NOT NULL AND end_location_x IS NOT NULL
-            """), {"mid": match_id, "pid": player_id}).fetchall()
+            """), {"mid": match_id, "pid": event_pid}).fetchall()
 
             pass_network = [{
                 "from_x": round(float(r.location_x) / 1.2, 1),
@@ -1143,7 +1151,7 @@ def get_player_pitch_data(match_id: str, player_id: str):
                 FROM match_events
                 WHERE match_id = :mid AND player_id = :pid
                   AND location_x IS NOT NULL
-            """), {"mid": match_id, "pid": player_id}).fetchall()
+            """), {"mid": match_id, "pid": event_pid}).fetchall()
 
             type_map = {
                 30: "pass", 16: "shot", 14: "dribble", 43: "cross",
@@ -1404,6 +1412,125 @@ def get_player_tracking_metrics(
         raise
     except Exception as e:
         print(f"❌ Error en player tracking metrics: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
+
+
+@app.get("/match/{match_id}/player/{player_id}/tracking/heatmap")
+def get_player_tracking_heatmap(
+    match_id: str,
+    player_id: str,
+    grid_x: int = Query(24, ge=8, le=60, description="Columnas de la rejilla"),
+    grid_y: int = Query(16, ge=6, le=40, description="Filas de la rejilla"),
+):
+    """
+    Heatmap posicional del jugador basado en datos de TRACKING (match_tracking),
+    no de eventing.
+
+    Las posiciones (metros, origen en el centro del campo) se espejan por periodo
+    con la misma convención que averagePositionsTracking para que el equipo del
+    jugador ataque siempre en la misma dirección, y se agregan en una rejilla
+    grid_x × grid_y con coordenadas normalizadas 0-100.
+
+    Respuesta:
+        {
+          "player_id": str, "samples": int, "grid": {"x": int, "y": int},
+          "cells": [ {"x": float 0-100, "y": float 0-100, "v": float 0-1}, ... ]
+        }
+
+    Cache en Redis (TTL 60s).
+    """
+    redis_key = f"match:{match_id}:player:{player_id}:tracking_heatmap:{grid_x}x{grid_y}"
+    if redis_conn:
+        try:
+            cached = redis_conn.get(redis_key)
+            if cached:
+                return json.loads(cached)
+        except Exception as e:
+            print(f"⚠️ Redis cache error (non-fatal): {e}")
+
+    engine = get_db_engine()
+    try:
+        with engine.connect() as conn:
+            # Home/away del jugador para aplicar el espejado por periodo
+            team_rows = conn.execute(text("""
+                SELECT player_id, team_id
+                FROM match_players
+                WHERE match_id = :mid AND team_id IS NOT NULL
+            """), {"mid": match_id}).fetchall()
+
+            team_by_pid = {str(r.player_id): r.team_id for r in team_rows}
+            team_ids_sorted = sorted({r.team_id for r in team_rows})
+            home_team_id = team_ids_sorted[1] if len(team_ids_sorted) >= 2 else (
+                team_ids_sorted[0] if team_ids_sorted else None
+            )
+            is_home = team_by_pid.get(str(player_id)) == home_team_id
+
+            rows = conn.execute(text("""
+                WITH extracted AS (
+                    SELECT
+                        (players_data->>'period')::float AS period,
+                        (elem->>'x')::float AS x,
+                        (elem->>'y')::float AS y
+                    FROM match_tracking,
+                    LATERAL jsonb_array_elements(players_data->'player_data') AS elem
+                    WHERE match_id = :mid
+                      AND (elem->>'player_id')::text = :pid
+                      AND elem->>'x' IS NOT NULL
+                      AND elem->>'y' IS NOT NULL
+                ), mirrored AS (
+                    -- Misma convención que averagePositionsTracking:
+                    --   home: P1 (x, -y) · P2 (-x, y)
+                    --   away: P1 (-x, y) · P2 (x, -y)
+                    SELECT
+                        CASE WHEN (:ih AND period = 2.0) OR ((NOT :ih) AND period != 2.0)
+                             THEN -x ELSE x END AS xn,
+                        CASE WHEN (:ih AND period != 2.0) OR ((NOT :ih) AND period = 2.0)
+                             THEN -y ELSE y END AS yn
+                    FROM extracted
+                )
+                SELECT
+                    width_bucket((xn + 52.5) / 105.0, 0, 1, :gx) AS bx,
+                    width_bucket((yn + 34.0) / 68.0, 0, 1, :gy) AS by,
+                    COUNT(*) AS n
+                FROM mirrored
+                GROUP BY bx, by
+            """), {"mid": match_id, "pid": str(player_id), "ih": is_home,
+                   "gx": grid_x, "gy": grid_y}).fetchall()
+
+            samples = sum(int(r.n) for r in rows)
+            max_n = max((int(r.n) for r in rows), default=0)
+
+            cells = []
+            for r in rows:
+                # width_bucket devuelve 0 / gx+1 para valores fuera de rango: clamp
+                bx = min(max(int(r.bx), 1), grid_x)
+                by = min(max(int(r.by), 1), grid_y)
+                cells.append({
+                    "x": round((bx - 0.5) / grid_x * 100, 2),
+                    "y": round((by - 0.5) / grid_y * 100, 2),
+                    "v": round(int(r.n) / max_n, 4) if max_n else 0,
+                })
+
+            result = {
+                "player_id": str(player_id),
+                "samples": samples,
+                "grid": {"x": grid_x, "y": grid_y},
+                "cells": cells,
+            }
+
+            if redis_conn:
+                try:
+                    redis_conn.setex(redis_key, 60, json.dumps(result))
+                except Exception:
+                    pass
+
+            print(f"🔥 Tracking heatmap: player {player_id} -> {len(cells)} celdas, {samples} muestras")
+            return result
+
+    except Exception as e:
+        print(f"❌ Error en tracking heatmap: {e}")
         import traceback
         traceback.print_exc()
         return {"error": str(e)}

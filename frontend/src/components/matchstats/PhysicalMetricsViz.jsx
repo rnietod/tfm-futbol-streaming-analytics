@@ -22,7 +22,8 @@ const clock = (s) => `${Math.floor(s / 60)}:${String(Math.round(s) % 60).padStar
 const MONO = { fontFamily: "'JetBrains Mono', 'Fira Mono', monospace" };
 
 // ── Speed timeseries sparkline (bucketed by max to preserve peaks) ──
-const SpeedSparkline = ({ speedSeries, vmaxMs, color }) => {
+// Exported: reused by PlayerDeepDive's Physical section
+export const SpeedSparkline = ({ speedSeries, vmaxMs, color }) => {
   const W = 248;
   const H = 44;
   const { path, sprintY, peak } = useMemo(() => {
