@@ -1534,3 +1534,138 @@ def get_player_tracking_heatmap(
         import traceback
         traceback.print_exc()
         return {"error": str(e)}
+
+
+# ==========================================
+# 🧭 DOFA API — scouting pre-partido (BigQuery, ponderado por recencia)
+# ==========================================
+
+OUR_TEAM = "Real Madrid"
+DEFAULT_RIVAL = "Atlético de Madrid"
+_dofa_engine = None
+
+
+def _get_dofa_engine():
+    """Instancia perezosa del DofaEngine (evita conectar a BigQuery al arrancar la API)."""
+    global _dofa_engine
+    if _dofa_engine is None:
+        from src.services.dofa_engine import DofaEngine
+        _dofa_engine = DofaEngine()
+    return _dofa_engine
+
+
+def _dofa_cached(cache_key: str, ttl: int, compute_fn, force_recalc: bool = False):
+    """Caché Redis para resultados DOFA (las consultas a BigQuery escanean ~5-6 GB).
+
+    TTL largo porque los datos históricos cambian poco; usar ?force_recalc=true para refrescar.
+    """
+    if not force_recalc and redis_conn:
+        try:
+            cached = redis_conn.get(cache_key)
+            if cached:
+                print(f"[DOFA] Cache HIT {cache_key}")
+                return json.loads(cached)
+        except Exception as e:
+            print(f"⚠️ DOFA cache read error (non-fatal): {e}")
+
+    result = compute_fn()
+
+    if redis_conn and isinstance(result, dict) and not result.get("error"):
+        try:
+            redis_conn.setex(cache_key, ttl, json.dumps(clean_nans(result)))
+        except Exception as e:
+            print(f"⚠️ DOFA cache write error (non-fatal): {e}")
+    return result
+
+
+def _dofa_norm_name(s: str) -> str:
+    """Minúsculas y sin acentos, para comparar nombres de equipo entre fuentes."""
+    import unicodedata
+    s = unicodedata.normalize("NFD", s or "")
+    return "".join(c for c in s if unicodedata.category(c) != "Mn").lower()
+
+
+def _dofa_resolve_team(pg_name: str) -> str:
+    """Resuelve un nombre de Postgres al canónico de BigQuery por solape de tokens
+    (p.ej. 'Atlético Madrid' → 'Atlético de Madrid'). Si falla, devuelve el original."""
+    if not pg_name:
+        return pg_name
+    try:
+        data = _dofa_cached(
+            "dofa:teamnames", 86400 * 7,
+            lambda: {"names": _get_dofa_engine().list_team_names()},
+        )
+        names = data.get("names", [])
+    except Exception as e:
+        print(f"⚠️ DOFA resolve team: sin lista de BQ ({e})")
+        return pg_name
+
+    target = set(_dofa_norm_name(pg_name).split())
+    best, best_score = pg_name, 0
+    for n in names:
+        score = len(target & set(_dofa_norm_name(n).split()))
+        if score > best_score:
+            best, best_score = n, score
+    return best if best_score > 0 else pg_name
+
+
+@app.get("/dofa/teams")
+def dofa_teams(match_id: str = "test_match"):
+    """Equipos del DOFA: nuestro equipo (Real Madrid) y el rival (oponente de test_match).
+
+    El nombre del rival viene de Postgres (matches) y puede no coincidir con el canónico
+    de BigQuery ('Atlético Madrid' vs 'Atlético de Madrid'): se resuelve contra BQ.
+    """
+    rival = DEFAULT_RIVAL
+    try:
+        engine = get_db_engine()
+        with engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT home_team_name, away_team_name FROM matches WHERE match_id = :mid"
+            ), {"mid": match_id}).fetchone()
+            if row:
+                for n in (row.home_team_name, row.away_team_name):
+                    if n and OUR_TEAM.lower() not in n.lower():
+                        rival = n
+    except Exception as e:
+        print(f"⚠️ DOFA teams: usando rival por defecto ({e})")
+    return {"ourTeam": OUR_TEAM, "rival": _dofa_resolve_team(rival)}
+
+
+@app.get("/dofa/overview")
+def dofa_overview(team: str, n_matches: int = 90, force_recalc: bool = False):
+    """Paquete DOFA completo de un equipo (ponderado por recencia). Cacheado 24h en Redis."""
+    team = _dofa_resolve_team(team)  # acepta alias de Postgres ('Atlético Madrid')
+    key = f"dofa:overview:{team}:{n_matches}"
+    try:
+        result = _dofa_cached(
+            key, 86400,
+            lambda: _get_dofa_engine().compute_team_dofa(team, n_matches),
+            force_recalc,
+        )
+        return clean_nans(result)
+    except Exception as e:
+        print(f"❌ Error en /dofa/overview: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
+
+
+@app.get("/dofa/ideal-xi")
+def dofa_ideal_xi(team: str = OUR_TEAM, rival: str = None,
+                  n_matches: int = 90, force_recalc: bool = False):
+    """11 ideal heurístico: mejor XI por posición según rating ponderado. Cacheado 24h."""
+    team = _dofa_resolve_team(team)
+    key = f"dofa:idealxi:{team}:{n_matches}"
+    try:
+        result = _dofa_cached(
+            key, 86400,
+            lambda: _get_dofa_engine().compute_ideal_xi(team, rival, n_matches),
+            force_recalc,
+        )
+        return clean_nans(result)
+    except Exception as e:
+        print(f"❌ Error en /dofa/ideal-xi: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
