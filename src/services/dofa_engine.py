@@ -313,6 +313,121 @@ class DofaEngine:
             return "GK"
         return self._bucket_position(p.get("position"))
 
+    @staticmethod
+    def _struct_get(s, key):
+        return s.get(key) if isinstance(s, dict) else getattr(s, key, None)
+
+    def _positions_for(self, player_ids):
+        """Perfiles de posición (carrera) de un conjunto de jugadores desde mart_player_positions.
+        Tabla pequeña → consulta diminuta. Devuelve {player_id: {primaryLabel, x, y, positions[]}}."""
+        ids = [str(p).replace("'", "") for p in player_ids if p]
+        if not ids:
+            return {}
+        in_list = ",".join("'" + i + "'" for i in ids)
+        rows = self._run(
+            "SELECT player_id, primary_label, primary_x, primary_y, positions "
+            "FROM `tfm-master-futbol.marts_football.mart_player_positions` "
+            "WHERE player_id IN (" + in_list + ")"
+        )
+        out = {}
+        for r in rows:
+            out[r["player_id"]] = {
+                "primaryLabel": r["primary_label"],
+                "x": r["primary_x"], "y": r["primary_y"],
+                "positions": [
+                    {"label": self._struct_get(p, "label"),
+                     "code": self._struct_get(p, "code"),
+                     "matches": self._struct_get(p, "matches")}
+                    for p in (r["positions"] or [])
+                ],
+            }
+        return out
+
+    def _enrich_xi(self, xi, place=True):
+        """Adjunta a cada jugador del XI sus perfiles de posición (para el hover) desde
+        mart_player_positions. Si place=True, además lo COLOCA en su posición principal
+        (con anti-solape). Si place=False (p.ej. 11 previsto), respeta las coords de slot ya fijadas."""
+        pos = self._positions_for([p["playerId"] for p in xi])
+        seen = set()
+        for p in xi:
+            info = pos.get(p["playerId"])
+            p["positions"] = info["positions"] if info else []
+            if place:
+                if info:
+                    p["primaryLabel"] = info["primaryLabel"]
+                    if info["x"] is not None and info["y"] is not None:
+                        p["x"], p["y"] = float(info["x"]), float(info["y"])
+                else:
+                    p["primaryLabel"] = p.get("position")
+                key = (round(p["x"]), round(p["y"]))
+                while key in seen:
+                    p["y"] = min(94.0, max(6.0, p["y"] + 6))
+                    key = (round(p["x"]), round(p["y"]))
+                seen.add(key)
+        return xi
+
+    def _previsto_xi(self, players, match_ids):
+        """11 previsto = formación más usada del equipo EN LA VENTANA RECIENTE, con un jugador
+        único por slot (el más repetido disponible). Alineación estándar limpia y actual.
+        Devuelve None si no se resuelve el equipo en int_match_lineups (fallback a _expected_xi)."""
+        LIN = "`tfm-master-futbol.marts_football.int_match_lineups`"
+        REF = "`tfm-master-futbol.marts_football.ref_formation_layout`"
+        if not match_ids:
+            return None
+        mids = ",".join("'" + _safe_id(m) + "'" for m in match_ids)
+        top = [p["player_id"] for p in sorted(players, key=lambda p: p["w_presence"] or 0, reverse=True)[:25]
+               if p["player_id"]]
+        if not top:
+            return None
+        in_list = ",".join("'" + str(i).replace("'", "") + "'" for i in top)
+        tid = self._run("SELECT team_id, COUNT(1) c FROM " + LIN +
+                        " WHERE match_id IN (" + mids + ") AND player_id IN (" + in_list + ") "
+                        "GROUP BY team_id ORDER BY c DESC LIMIT 1")
+        if not tid:
+            return None
+        team_id = tid[0]["team_id"]
+        frow = self._run("SELECT formation_id, COUNT(DISTINCT match_id) m FROM " + LIN +
+                         " WHERE team_id='" + team_id + "' AND match_id IN (" + mids + ") "
+                         "GROUP BY formation_id ORDER BY m DESC LIMIT 1")
+        if not frow:
+            return None
+        formation = frow[0]["formation_id"]
+        # Candidatos por slot (top 4 por frecuencia) para poder asignar jugador único
+        cand = self._run(
+            "WITH s AS (SELECT formation_place, player_id, COUNT(1) c, "
+            " ROW_NUMBER() OVER (PARTITION BY formation_place ORDER BY COUNT(1) DESC) rn FROM " + LIN +
+            " WHERE team_id='" + team_id + "' AND formation_id='" + formation + "' "
+            " AND formation_place BETWEEN 1 AND 11 AND match_id IN (" + mids + ") "
+            " GROUP BY formation_place, player_id) "
+            "SELECT formation_place fp, player_id FROM s WHERE rn <= 4 ORDER BY formation_place, rn")
+        if not cand:
+            return None
+        by_slot = {}
+        for r in cand:
+            by_slot.setdefault(int(r["fp"]), []).append(r["player_id"])
+        ref = {int(r["slot"]): r for r in self._run(
+            "SELECT slot, position_code, label, x, y FROM " + REF + " WHERE formation_id='" + formation + "'")}
+
+        pmap = {p["player_id"]: p for p in players}
+        used, xi = set(), []
+        for slot in range(1, 12):
+            if slot not in ref:
+                continue
+            chosen = next((pid for pid in by_slot.get(slot, []) if pid not in used), None)
+            if not chosen:
+                continue
+            used.add(chosen)
+            base = pmap.get(chosen, {})
+            rr = ref[slot]
+            xi.append({
+                "playerId": chosen, "name": base.get("name") or "—",
+                "position": base.get("position"), "primaryLabel": rr["label"],
+                "goals": base.get("goals", 0), "assists": base.get("assists", 0),
+                "apps": base.get("apps", 0),
+                "x": float(rr["x"]), "y": float(rr["y"]),
+            })
+        return {"formation": formation, "xi": xi}
+
     def _expected_xi(self, players):
         # El portero genera muchos menos eventos que un jugador de campo, así que si
         # ordenáramos solo por presencia podría quedar fuera: reservamos 1 plaza GK
@@ -405,17 +520,28 @@ class DofaEngine:
         top_assisters = self._top(players, "w_assists")
         swot = self._build_swot(summary, goals_by_minute, top_scorers)
 
+        # 11 previsto: formación más usada con el jugador modal por slot (alineación estándar
+        # limpia). Si no se resuelve el equipo en los lineups, fallback por presencia.
+        previsto = self._previsto_xi(players, [m["match_id"] for m in matches])
+        if previsto:
+            expected_xi = self._enrich_xi(previsto["xi"], place=False)
+            formation = previsto["formation"]
+        else:
+            expected_xi = self._enrich_xi(self._expected_xi(players))
+            formation = None
+
         logger.info(f"[DofaEngine] {team_name}: total facturado {self._bytes_billed/1e9:.2f} GB")
         return {
             "team": team_name,
             "windowMatches": len(matches),
             "dateRange": {"from": matches[-1]["match_date"], "to": matches[0]["match_date"]},
             "bytesBilled": self._bytes_billed,
+            "formation": formation,
             "summary": summary,
             "goalsByMinute": goals_by_minute,
             "topScorers": top_scorers,
             "topAssisters": top_assisters,
-            "expectedXI": self._expected_xi(players),
+            "expectedXI": expected_xi,
             "shotZones": shot_zones,
             "teamHeatmap": heatmap,
             "swot": swot,
@@ -451,4 +577,5 @@ class DofaEngine:
                     "bucket": bucket, "rating": p["_rating"], "goals": p["goals"],
                     "assists": p["assists"], "x": round(p["avg_x"], 1), "y": round(p["avg_y"], 1),
                 })
-        return {"team": team_name, "rival": rival, "formation": "1-4-3-3", "xi": xi}
+        return {"team": team_name, "rival": rival, "formation": "1-4-3-3",
+                "xi": self._enrich_xi(xi)}
