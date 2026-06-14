@@ -50,6 +50,28 @@ class BigQueryClient:
             logger.error(f"Error inicializando cliente BigQuery: {e}")
             raise
 
+    def query(self, sql: str, params: Optional[list] = None,
+              max_bytes: Optional[int] = 8_000_000_000):
+        """
+        Ejecuta una consulta arbitraria y devuelve (rows, bytes_billed).
+
+        - `params`: lista de bigquery.ScalarQueryParameter/ArrayQueryParameter (opcional).
+        - `max_bytes`: tope de bytes facturables como red de seguridad de coste
+          (las consultas del DOFA filtran por team_name y escanean ~5-6 GB).
+
+        Devuelve `(list[dict], int)` con las filas materializadas y los bytes facturados,
+        para poder loggear el coste de cada consulta.
+        """
+        job_config = bigquery.QueryJobConfig()
+        if params:
+            job_config.query_parameters = params
+        if max_bytes:
+            job_config.maximum_bytes_billed = max_bytes
+
+        job = self._client.query(sql, job_config=job_config)
+        rows = [dict(r) for r in job.result()]
+        return rows, (job.total_bytes_billed or 0)
+
     def get_player_season_profile(self, player_ids: List[str]) -> pd.DataFrame:
         """
         Obtiene el perfil de rendimiento para una lista de jugadores.
