@@ -39,6 +39,23 @@ const surname = (name) => (name || '').trim().split(' ').pop();
 // en pantalla (convención de scouting), el eje Y se espeja al pasar a viewBox (64 alto).
 const toCy = (y) => ((100 - y) / 100) * 64;
 
+// Etiqueta de posición (español) → código corto, para el rótulo bajo cada jugador.
+const LABEL_TO_CODE = {
+  'POR': 'POR', 'Lateral Dcho': 'LD', 'Lateral Izdo': 'LI', 'Defensa Central': 'DFC',
+  'Carrilero Dcho': 'CAR', 'Carrilero Izdo': 'CAR', 'Medio Centro Def': 'MCD',
+  'Medio Centro': 'MC', 'Medio Dcho': 'MD', 'Medio Izdo': 'MI',
+  'Extremo Dcho': 'ED', 'Extremo Izdo': 'EI', 'Delantero Centro': 'DC',
+};
+const codeOf = (label) => LABEL_TO_CODE[label] || (label || '').slice(0, 3).toUpperCase();
+
+// Código de formación Opta (Q130) → nombre legible (las comunes del dataset).
+const FORMATION_NAMES = {
+  '2': '4-4-2', '3': '4-1-2-1-2', '4': '4-3-3', '5': '4-5-1', '6': '4-4-1-1',
+  '7': '4-2-3-1', '8': '4-2-3-1', '9': '4-3-2-1', '10': '5-3-2', '11': '5-4-1',
+  '12': '3-5-2', '13': '3-4-3', '15': '4-3-3', '16': '3-4-3', '17': '3-4-3', '18': '3-4-3',
+};
+const formationName = (f) => (f == null ? '' : (FORMATION_NAMES[String(f)] || String(f)));
+
 // ── CARD (glassmorphism) ────────────────────────────────────
 const Card = ({ title, icon: Icon, accent, children, className = '', span = '' }) => (
   <div className={`rounded-xl border border-white/5 bg-zinc-900/60 backdrop-blur-xl shadow-lg p-3 flex flex-col ${span} ${className}`}>
@@ -66,27 +83,65 @@ const PitchLines = () => (
   </g>
 );
 
-// ── FORMATION PITCH ─────────────────────────────────────────
-const FormationPitch = ({ players = [], accent }) => (
-  <svg viewBox="0 0 100 64" className="w-full h-auto"
-    style={{ background: 'linear-gradient(180deg,#0e1f38 0%,#122a18 50%,#0e1f38 100%)', borderRadius: 8 }}>
-    <PitchLines />
-    {players.map((p, i) => {
-      const cx = p.x, cy = toCy(p.y);
-      return (
-        <g key={p.playerId || i}>
-          <title>{`${p.name} · ${p.position || ''} · ${p.goals}G ${p.assists}A`}</title>
-          <circle cx={cx} cy={cy} r="3.4" fill="rgba(0,0,0,0.78)" stroke={accent} strokeWidth="0.6" />
-          <circle cx={cx} cy={cy} r="4.6" fill={accent} fillOpacity="0.12" />
-          <text x={cx} y={cy + 1} textAnchor="middle" dominantBaseline="middle"
-            fontSize="2.1" fill="white" fontWeight="bold">{surname(p.name).slice(0, 6)}</text>
-        </g>
-      );
-    })}
-    <text x="50" y="62" textAnchor="middle" fontSize="2.3" fill="rgba(255,255,255,0.35)"
-      fontWeight="700" style={{ letterSpacing: '0.4px' }}>ATACA →</text>
-  </svg>
-);
+// ── FORMATION PITCH (alineación estándar + hover de perfiles) ─
+const FormationPitch = ({ players = [], accent }) => {
+  const [hover, setHover] = useState(null);
+  const hp = hover != null ? players[hover] : null;
+  return (
+    <div className="relative w-full">
+      <svg viewBox="0 0 100 64" className="w-full h-auto"
+        style={{ background: 'linear-gradient(180deg,#0e1f38 0%,#122a18 50%,#0e1f38 100%)', borderRadius: 8 }}>
+        <PitchLines />
+        {players.map((p, i) => {
+          const cx = p.x, cy = toCy(p.y);
+          const active = hover === i;
+          return (
+            <g key={p.playerId || i} style={{ cursor: 'pointer' }}
+              onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
+              <circle cx={cx} cy={cy} r={active ? 5.6 : 4.6} fill={accent}
+                fillOpacity={active ? 0.28 : 0.12} />
+              <circle cx={cx} cy={cy} r="3.4" fill="rgba(0,0,0,0.82)" stroke={accent}
+                strokeWidth={active ? 1 : 0.6} />
+              <text x={cx} y={cy + 0.9} textAnchor="middle" dominantBaseline="middle"
+                fontSize="2" fill="white" fontWeight="bold">{surname(p.name).slice(0, 7)}</text>
+              <text x={cx} y={cy + 6} textAnchor="middle" fontSize="1.8" fontWeight="700"
+                fill={accent} style={{ letterSpacing: '0.3px' }}>{codeOf(p.primaryLabel)}</text>
+            </g>
+          );
+        })}
+        <text x="50" y="62" textAnchor="middle" fontSize="2.3" fill="rgba(255,255,255,0.35)"
+          fontWeight="700" style={{ letterSpacing: '0.4px' }}>ATACA →</text>
+      </svg>
+
+      {/* Tooltip de perfiles al pasar por encima */}
+      {hp && (
+        <div className="absolute z-30 pointer-events-none"
+          style={{ left: `${hp.x}%`, top: `${(toCy(hp.y) / 64) * 100}%`,
+                   transform: 'translate(-50%, -116%)' }}>
+          <div className="rounded-lg bg-zinc-950/95 backdrop-blur-md border px-2.5 py-2 shadow-2xl min-w-[140px]"
+            style={{ borderColor: `color-mix(in srgb, ${accent} 55%, transparent)` }}>
+            <div className="text-[11px] font-bold text-white leading-tight">{hp.name}</div>
+            <div className="text-[8px] font-bold uppercase tracking-widest mb-1.5" style={{ color: accent }}>
+              {hp.primaryLabel}
+            </div>
+            <div className="space-y-1 border-t border-white/10 pt-1.5">
+              <div className="text-[7px] uppercase tracking-widest text-zinc-600 font-bold">Perfiles (partidos)</div>
+              {(hp.positions || []).map((q, j) => (
+                <div key={j} className="flex items-center justify-between gap-4 text-[9px]">
+                  <span className={j === 0 ? 'text-white font-semibold' : 'text-zinc-400'}>{q.label}</span>
+                  <span className="font-mono text-zinc-500 tabular-nums">{q.matches}</span>
+                </div>
+              ))}
+              {(hp.positions || []).length === 0 && (
+                <div className="text-[8px] text-zinc-600 italic">sin histórico de posiciones</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ── HEAT PITCH (team heatmap) ───────────────────────────────
 const HeatPitch = ({ heatmap }) => {
@@ -305,12 +360,41 @@ const DofaTab = () => {
 
         {/* PANELS GRID */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
-          <Card title={`11 Previsto (${focusName})`} icon={Users} accent={accent} span="lg:col-span-6">
-            {isLoading ? <Loading msg="Cargando XI…" /> : <FormationPitch players={data?.expectedXI || []} accent={accent} />}
-          </Card>
-          <Card title={`11 Ideal (${ourTeam})`} icon={Award} accent={OURS_COLOR} span="lg:col-span-6">
-            {ideal ? <FormationPitch players={ideal.xi || []} accent={OURS_COLOR} /> : <Loading msg="Calculando XI ideal…" />}
-          </Card>
+          {/* CAMPO ÚNICO según equipo: rival → 11 previsto · Real Madrid → 11 ideal */}
+          {(() => {
+            const isRival = team === 'rival';
+            const xi = isRival ? (data?.expectedXI || []) : (ideal?.xi || []);
+            const formation = isRival ? data?.formation : ideal?.formation;
+            const xiLoading = isRival ? isLoading : !ideal;
+            return (
+              <Card
+                title={isRival ? `11 Previsto · ${focusName}` : `11 Ideal · ${ourTeam}`}
+                icon={isRival ? Users : Award}
+                accent={accent}
+                span="lg:col-span-12"
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[8px] text-zinc-500 uppercase tracking-widest">
+                    {isRival ? 'Alineación más probable (ventana reciente)' : 'Mejor XI por rendimiento'}
+                  </span>
+                  {formation && (
+                    <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded bg-zinc-800/80"
+                      style={{ color: accent }}>
+                      {formationName(formation)}
+                    </span>
+                  )}
+                </div>
+                {xiLoading
+                  ? <Loading msg="Cargando 11…" />
+                  : <div className="mx-auto w-full" style={{ maxWidth: 680 }}>
+                      <FormationPitch players={xi} accent={accent} />
+                    </div>}
+                <div className="mt-1.5 text-[8px] text-zinc-600 text-center">
+                  Pasa el cursor sobre un jugador para ver sus posiciones y partidos
+                </div>
+              </Card>
+            );
+          })()}
 
           <Card title="Goles por minuto" icon={Clock} accent={accent} span="lg:col-span-6">
             {isLoading ? <Loading msg="…" /> : <GoalsByMinute data={data?.goalsByMinute || []} accent={accent} />}

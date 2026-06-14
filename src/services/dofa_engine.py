@@ -359,11 +359,17 @@ class DofaEngine:
                         p["x"], p["y"] = float(info["x"]), float(info["y"])
                 else:
                     p["primaryLabel"] = p.get("position")
-                key = (round(p["x"]), round(p["y"]))
-                while key in seen:
-                    p["y"] = min(94.0, max(6.0, p["y"] + 6))
-                    key = (round(p["x"]), round(p["y"]))
-                seen.add(key)
+                # Anti-solape: si dos jugadores caen en la misma posición (p.ej. dos centrales
+                # cuyo slot modal es RCB), el segundo va a su reflejo (LCB); si también está
+                # ocupado, se desplaza en saltos mayores.
+                if (round(p["x"]), round(p["y"])) in seen:
+                    mirror = 100.0 - p["y"]
+                    if (round(p["x"]), round(mirror)) not in seen:
+                        p["y"] = mirror
+                    else:
+                        while (round(p["x"]), round(p["y"])) in seen:
+                            p["y"] = min(92.0, max(8.0, p["y"] + 12))
+                seen.add((round(p["x"]), round(p["y"])))
         return xi
 
     def _previsto_xi(self, players, match_ids):
