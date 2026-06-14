@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { BarChart3, Users, User, ChevronRight, Loader2, WifiOff } from 'lucide-react';
 import TeamComparison from './TeamComparison';
 import PlayerDeepDive from './PlayerDeepDive';
@@ -144,9 +144,15 @@ const MatchStatsTab = ({ targetPlayer }) => {
   const teamShortA = teamA?.teamShort || 'A';
   const teamShortB = teamB?.teamShort || 'B';
 
-  // Handle incoming targetPlayer from Dashboard
+  // Handle incoming targetPlayer from Dashboard.
+  // Solo se aplica cuando el target cambia de verdad: statsData se refresca
+  // cada 5s y sin esta guarda re-seleccionaba al target en cada poll,
+  // pisando la selección manual del usuario.
+  const lastTargetRef = useRef(null);
   useEffect(() => {
+    if (targetPlayer === lastTargetRef.current) return;
     if (targetPlayer && statsData?.players) {
+        lastTargetRef.current = targetPlayer;
         const targetName = (targetPlayer.name || "").toLowerCase();
         const targetNum = targetPlayer.number;
         const targetLastName = targetName.split(' ').pop(); // e.g. "griezmann"
@@ -294,12 +300,24 @@ const MatchStatsTab = ({ targetPlayer }) => {
       {viewMode === 'overview' ? (
         /* overview: no outer scroll — TeamComparison fills height with flex */
         <div className="flex-1 min-h-0 overflow-hidden p-4">
-          <TeamComparison teamA={teamA} teamB={teamB} />
+          <TeamComparison
+            teamA={teamA}
+            teamB={teamB}
+            selectedTeam={selectedTeam}
+            players={statsData?.players}
+          />
         </div>
       ) : (
-        /* player deep dive: scrollable */
-        <div className="flex-1 min-h-0 overflow-y-auto p-6 no-scrollbar">
-          <PlayerDeepDive playerData={selectedPlayer} pitchLoading={pitchLoading} />
+        /* player deep dive: fills height like overview — panels scroll internally */
+        <div className="flex-1 min-h-0 overflow-hidden p-4">
+          <PlayerDeepDive
+            playerData={selectedPlayer}
+            roster={activeRoster}
+            teamColor={teamColor}
+            teamShort={selectedTeam === 'teamA' ? teamShortA : teamShortB}
+            matchId={MATCH_ID}
+            pitchLoading={pitchLoading}
+          />
         </div>
       )}
     </div>

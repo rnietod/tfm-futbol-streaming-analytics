@@ -59,11 +59,36 @@ const PitchMarkings = () => {
 };
 
 // ============================================================
-const PassingNetworkPitch = ({ teamA, teamB, selectedTeam, analysisMode = 'passing' }) => {
+const PassingNetworkPitch = ({ teamA, teamB, selectedTeam, analysisMode = 'passing', dataType = 'eventing' }) => {
   const data      = selectedTeam === 'teamA' ? teamA : teamB;
   const teamColor = selectedTeam === 'teamA' ? '#006FEE' : '#f31260';
 
-  const { passNetwork = [], averagePositions = [] } = data || {};
+  const passNetwork = data?.passNetwork || [];
+  const eventPositions = data?.averagePositions || [];
+  const trackingPositions = data?.averagePositionsTracking || [];
+
+  const averagePositions = useMemo(() => {
+    if (dataType !== 'tracking') return eventPositions;
+    return eventPositions.map(ep => {
+      // Robust multi-criteria matching (jersey number, ID, or substring) because:
+      // 1. player_id in eventing is null, but present in tracking.
+      // 2. name formats differ (eventing has full names, tracking has short names).
+      const tp = trackingPositions.find(t => {
+        const numMatch = t.number !== null && ep.number !== null && Number(t.number) === Number(ep.number);
+        const idMatch = t.player_id && ep.player_id && String(t.player_id) === String(ep.player_id);
+        const nameMatch = t.name && ep.name && (
+          ep.name.toLowerCase().includes(t.name.toLowerCase()) || 
+          t.name.toLowerCase().includes(ep.name.toLowerCase())
+        );
+        return numMatch || idMatch || nameMatch;
+      });
+      if (tp) {
+        return { ...ep, x: tp.x, y: tp.y };
+      }
+      return ep;
+    });
+  }, [dataType, eventPositions, trackingPositions]);
+
   const hasData = passNetwork.length > 0 && averagePositions.length > 0;
 
   const maxPasses = useMemo(() => {
@@ -114,8 +139,10 @@ const PassingNetworkPitch = ({ teamA, teamB, selectedTeam, analysisMode = 'passi
                 );
               })}
 
-              {scaledPositions.map(player => (
-                <g key={`node-${player.player_id}`}>
+              {scaledPositions.map((player, idx) => {
+                const nodeKey = player.player_id && player.player_id !== 'null' ? player.player_id : (player.name || idx);
+                return (
+                  <g key={`node-${nodeKey}`}>
                   <circle cx={player.svgX} cy={player.svgY} r="5" fill={teamColor} fillOpacity="0.12" />
                   <circle cx={player.svgX} cy={player.svgY} r="3.8"
                     fill="rgba(0,0,0,0.88)" stroke={teamColor} strokeWidth="0.65" />
@@ -128,7 +155,8 @@ const PassingNetworkPitch = ({ teamA, teamB, selectedTeam, analysisMode = 'passi
                     {player.number ?? '?'}
                   </text>
                 </g>
-              ))}
+                );
+              })}
             </>
           )}
 

@@ -5,6 +5,8 @@ exclude =
     __pycache__,
     venvfutbol,
     .github,
+    .gemini,
+    node_modules,
     data
 
 # Configuración de longitud de línea (compatible con Black/Google style)
