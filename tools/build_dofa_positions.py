@@ -14,15 +14,12 @@ formaciones del dataset. Reproducible (idempotente: CREATE OR REPLACE).
 
 Uso:  python tools\build_dofa_positions.py
 """
-import json
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from google.cloud import bigquery
-
-from src.data.bigquery_client import BigQueryClient
+from src.data.bigquery_client import BigQueryClient  # noqa: E402
 
 DATASET = "tfm-master-futbol.marts_football"
 LINEUPS = f"`{DATASET}.int_match_lineups`"
@@ -32,6 +29,7 @@ MART = f"`{DATASET}.mart_player_positions`"
 # Orden lateral canónico de cada slot (derecha -> izquierda). Derivado de la convención de
 # numeración de Opta validada con datos (PSG 4-3-3: slot2=lat.dcho, slot3=lat.izdo, 5/6=centrales).
 LATERAL_RANK = {1: 2, 2: 0, 3: 4, 4: 2, 5: 1, 6: 3, 7: 1, 8: 3, 9: 2, 10: 0, 11: 4}
+
 
 def _ys(n, lo=12, hi=88):
     """Reparto simétrico de y (ancho) en el rango [lo,hi]. Ascendente = dcha->izda."""
