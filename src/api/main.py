@@ -1554,27 +1554,93 @@ def _get_dofa_engine():
     return _dofa_engine
 
 
-def _dofa_cached(cache_key: str, ttl: int, compute_fn, force_recalc: bool = False):
-    """Caché Redis para resultados DOFA (las consultas a BigQuery escanean ~5-6 GB).
+_DOFA_CACHE_TABLE_READY = False
 
-    TTL largo porque los datos históricos cambian poco; usar ?force_recalc=true para refrescar.
+
+def _ensure_dofa_cache_table():
+    """Crea (idempotente) la tabla de caché persistente de DOFA en PostgreSQL."""
+    global _DOFA_CACHE_TABLE_READY
+    if _DOFA_CACHE_TABLE_READY:
+        return
+    try:
+        engine = get_db_engine()
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS dofa_cache (
+                    cache_key   VARCHAR(200) PRIMARY KEY,
+                    payload     TEXT,
+                    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+        _DOFA_CACHE_TABLE_READY = True
+    except Exception as e:
+        print(f"⚠️ No se pudo asegurar dofa_cache (non-fatal): {e}")
+
+
+def _dofa_cached(cache_key: str, ttl: int, compute_fn, force_recalc: bool = False):
+    """Caché de DOFA en dos capas para que BigQuery se consulte UNA sola vez por dato:
+
+      1. Redis  (rápido, TTL para refresco visual)  — se repuebla desde Postgres si expira.
+      2. PostgreSQL `dofa_cache` (persistente, sobrevive reinicios de Redis/API).
+      3. Cálculo en BigQuery (~5-25 GB) — solo si ninguna capa lo tiene o force_recalc=true.
+
+    Usar ?force_recalc=true para forzar el recálculo y refrescar ambas capas.
     """
+    # ── Capa 1: Redis ──────────────────────────────────────────────────────────
     if not force_recalc and redis_conn:
         try:
             cached = redis_conn.get(cache_key)
             if cached:
-                print(f"[DOFA] Cache HIT {cache_key}")
+                print(f"[DOFA] Cache HIT Redis {cache_key}")
                 return json.loads(cached)
         except Exception as e:
-            print(f"⚠️ DOFA cache read error (non-fatal): {e}")
+            print(f"⚠️ DOFA Redis read error (non-fatal): {e}")
 
+    # ── Capa 2: PostgreSQL (persistente) ───────────────────────────────────────
+    _ensure_dofa_cache_table()
+    if not force_recalc:
+        try:
+            engine = get_db_engine()
+            with engine.connect() as conn:
+                row = conn.execute(
+                    text("SELECT payload FROM dofa_cache WHERE cache_key = :k"),
+                    {"k": cache_key},
+                ).fetchone()
+            if row and row.payload:
+                print(f"[DOFA] Cache HIT Postgres {cache_key}")
+                payload = json.loads(row.payload)
+                if redis_conn:  # repoblar Redis para los próximos accesos
+                    try:
+                        redis_conn.setex(cache_key, ttl, row.payload)
+                    except Exception:
+                        pass
+                return payload
+        except Exception as e:
+            print(f"⚠️ DOFA Postgres read error (non-fatal): {e}")
+
+    # ── Capa 3: Cálculo en BigQuery ────────────────────────────────────────────
     result = compute_fn()
 
-    if redis_conn and isinstance(result, dict) and not result.get("error"):
+    if isinstance(result, dict) and not result.get("error"):
+        payload_str = json.dumps(clean_nans(result))
+        # Persistir en Postgres (no se vuelve a consultar BigQuery por este dato)
         try:
-            redis_conn.setex(cache_key, ttl, json.dumps(clean_nans(result)))
+            engine = get_db_engine()
+            with engine.begin() as conn:
+                conn.execute(text("""
+                    INSERT INTO dofa_cache (cache_key, payload, created_at)
+                    VALUES (:k, :p, CURRENT_TIMESTAMP)
+                    ON CONFLICT (cache_key)
+                    DO UPDATE SET payload = EXCLUDED.payload, created_at = CURRENT_TIMESTAMP
+                """), {"k": cache_key, "p": payload_str})
         except Exception as e:
-            print(f"⚠️ DOFA cache write error (non-fatal): {e}")
+            print(f"⚠️ DOFA Postgres write error (non-fatal): {e}")
+        # Redis para acceso rápido
+        if redis_conn:
+            try:
+                redis_conn.setex(cache_key, ttl, payload_str)
+            except Exception as e:
+                print(f"⚠️ DOFA Redis write error (non-fatal): {e}")
     return result
 
 
