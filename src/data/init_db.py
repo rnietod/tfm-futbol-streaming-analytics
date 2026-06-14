@@ -75,7 +75,10 @@ def init_tables():
         pass_recipient_name VARCHAR(100),
         pass_height_name VARCHAR(50),
         body_part_name VARCHAR(50),
-        
+
+        -- Métricas de Calidad (xG calculado externamente)
+        xg FLOAT,
+
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -189,6 +192,27 @@ def init_tables():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (match_id, player_id)
     );
+
+    -- 8. MÉTRICAS FÍSICAS DE TRACKING (Calculadas por el TrackingMetricsEngine)
+    CREATE TABLE IF NOT EXISTS player_tracking_metrics (
+        match_id              VARCHAR(50),
+        player_id             INTEGER,
+        total_distance_m      FLOAT,
+        max_speed_ms          FLOAT,
+        max_speed_kmh         FLOAT,
+        max_speed_at_second   INTEGER,
+        max_speed_at_period   INTEGER,
+        distance_sprint_m     FLOAT,
+        distance_run_m        FLOAT,
+        distance_walk_m       FLOAT,
+        speed_per_second      JSONB,
+        frames_processed      INTEGER,
+        calculated_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (match_id, player_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_tracking_metrics_match
+        ON player_tracking_metrics(match_id);
     """
     
     with engine.connect() as conn:

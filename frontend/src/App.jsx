@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Chip, Slider, Button, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Switch } from "@nextui-org/react";
-import { 
-  Wifi, WifiOff, Activity, Play, Pause, SkipBack, 
-  FastForward, Radio, BrainCircuit, TrendingUp, Users, LayoutGrid, BarChart3
+import {
+  Wifi, WifiOff, Activity, Play, Pause, SkipBack,
+  FastForward, Radio, BrainCircuit, TrendingUp, Users, LayoutGrid, BarChart3, Swords
 } from 'lucide-react';
 import FootballPitch from './components/FootballPitch';
 import GhostTicker from './components/GhostTicker';
@@ -10,6 +10,7 @@ import DynamicBackground from './components/DynamicBackground';
 import PlayerGlassCard from './components/PlayerGlassCard';
 import TactixLogo from './components/TactixLogo';
 import MatchStatsTab from './components/matchstats/MatchStatsTab';
+import DofaTab from './components/dofa/DofaTab';
 import { useMatchHistory } from './hooks/useMatchHistory';
 
 // --- UTILIDADES ---
@@ -481,6 +482,16 @@ return (
                 <BarChart3 size={12} /> MATCH STATS
              </button>
              <button
+                onClick={() => setActiveTab('dofa')}
+                className={`px-4 py-1.5 rounded-full text-[10px] font-bold tracking-wide transition-all duration-300 flex items-center gap-2 ${
+                  activeTab === 'dofa'
+                    ? 'bg-primary/20 text-primary border border-primary/20 shadow-[0_0_15px_rgba(0,111,238,0.15)]'
+                    : 'text-zinc-500 hover:text-zinc-300 border border-transparent'
+                }`}
+             >
+                <Swords size={12} /> DOFA
+             </button>
+             <button
                 onClick={() => setActiveTab('vision')}
                 className={`px-4 py-1.5 rounded-full text-[10px] font-bold tracking-wide transition-all duration-300 flex items-center gap-2 ${
                   activeTab === 'vision'
@@ -593,6 +604,11 @@ return (
         {/* TAB: MATCH STATS HUB */}
         {activeTab === 'matchstats' && (
           <MatchStatsTab targetPlayer={statsTargetPlayer} />
+        )}
+
+        {/* TAB: DOFA (análisis pre-partido) */}
+        {activeTab === 'dofa' && (
+          <DofaTab />
         )}
 
         {/* TAB: GEMINI VISION (placeholder) */}
