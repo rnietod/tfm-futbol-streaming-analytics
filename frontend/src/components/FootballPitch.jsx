@@ -1,12 +1,20 @@
-import React from 'react';
+import React, { useState } from 'react';
 import PlayerMarker from './PlayerMarker';
+import VoronoiOverlay from './pitch/VoronoiOverlay';
+import PitchLayerToggles from './pitch/PitchLayerToggles';
+import { buildPoints } from '../lib/pitchModels';
 
 // Dimensiones Oficiales
 const REAL_PITCH_LENGTH = 105;
 const REAL_PITCH_WIDTH = 68;
 
 const FootballPitch = ({ matchState, latestEvent, playerMap = {}, width = 1100, height = 700, onPlayerClick }) => {
-  
+
+  // Capas tácticas seleccionables (independientes). Voronoi en esta parte; el
+  // Pitch Control se añade en la Parte 4.
+  const [layers, setLayers] = useState({ voronoi: false });
+  const toggleLayer = (key) => setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
+
   // (Funciones de conversión matemática IGUAL QUE ANTES...)
   const trackingToPixels = (x_meters, y_meters) => {
     if (x_meters === null || y_meters === null || x_meters === undefined) return { x: -100, y: -100 };
@@ -49,6 +57,13 @@ const FootballPitch = ({ matchState, latestEvent, playerMap = {}, width = 1100, 
   const players = matchState.player_data;
   const ball = matchState.ball_data;
 
+  // Área de juego en píxeles (clip de Voronoi) y puntos de los jugadores en el
+  // mismo espacio que los marcadores (vía trackingToPixels).
+  const PAD_X = width * 0.05;
+  const PAD_Y = height * 0.05;
+  const pitchBounds = [PAD_X, PAD_Y, width - PAD_X, height - PAD_Y];
+  const points = buildPoints(players, playerMap, trackingToPixels);
+
   return (
     <div 
       style={{ 
@@ -73,6 +88,17 @@ const FootballPitch = ({ matchState, latestEvent, playerMap = {}, width = 1100, 
          </g>
          <rect x="0" y="0" width="100%" height="100%" fill="none" stroke="rgba(0, 242, 255, 0.1)" strokeWidth="4" className="animate-pulse-slow"/>
       </svg>
+
+      {/* CAPAS TÁCTICAS */}
+      <VoronoiOverlay
+        points={points}
+        bounds={pitchBounds}
+        width={width}
+        height={height}
+        active={layers.voronoi}
+      />
+
+      <PitchLayerToggles layers={layers} onToggle={toggleLayer} />
 
       {latestEvent && latestEvent.raw_x && (
         <div 
