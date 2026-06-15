@@ -12,6 +12,7 @@ import TactixLogo from './components/TactixLogo';
 import MatchStatsTab from './components/matchstats/MatchStatsTab';
 import DofaTab from './components/dofa/DofaTab';
 import { useMatchHistory } from './hooks/useMatchHistory';
+import { nextPopulatedFrame } from './lib/replayBuffer';
 
 // --- UTILIDADES ---
 const formatTime = (fullTimestamp) => {
@@ -282,12 +283,21 @@ function App() {
   };
 
   // Hook de Historial
-  const { 
-    displayData,   
-    events: historyEvents, 
+  const {
+    displayData,
+    setDisplayData,
+    events: historyEvents,
     isLoadingHistory,
     historyRef
-  } = useMatchHistory("test_match", isLive, sliderValue, latestTracking);
+  } = useMatchHistory("test_match", isLive, sliderValue, latestTracking, isPlaying);
+
+  // maxFrame y el frame de replay se leen por ref dentro del bucle rAF para no
+  // reiniciarlo en cada frame del live ni depender de sliderValue.
+  const maxFrameRef = useRef(0);
+  const replayFrameRef = useRef(0);
+  const isLiveRef = useRef(isLive);
+  useEffect(() => { maxFrameRef.current = maxFrame; }, [maxFrame]);
+  useEffect(() => { isLiveRef.current = isLive; }, [isLive]);
 
   // Sincronización Eventos
   useEffect(() => {
@@ -313,7 +323,15 @@ function App() {
         const msg = JSON.parse(e.data);
         if (msg.type === "tracking") {
           setLatestTracking(msg.payload);
-        } 
+          // maxFrame y (en live) el slider se fijan aquí, batched con setLatestTracking,
+          // en vez de en useEffects separados: evita setStates anidados que hacían trepar
+          // el contador de updates de React (renders abortados -> tirón "robótico").
+          const f = msg.payload?.frame;
+          if (f) {
+            setMaxFrame(prev => (f > prev ? f : prev));
+            if (isLiveRef.current) setSliderValue(f);
+          }
+        }
         else if (msg.type === "event") {
           const newEvent = msg.payload;
           if (newEvent) {
@@ -331,37 +349,47 @@ function App() {
     return () => ws.current?.close();
   }, []);
 
-  // Sync Frames
+  // Game Loop (replay): cadencia de reloj real con rAF + acumulador.
+  // Avanza un frame poblado cada 100ms (10Hz, igual que el live) saltando los
+  // frames vacíos (53%). Un único rAF persistente por sesión de play elimina el
+  // jitter del setTimeout encadenado y el churn de recrear el efecto cada frame.
+  // Actualiza el estado ~10 veces/seg (como el live) -> sin tormenta de renders;
+  // la transición CSS de 0.1s suaviza entre frames.
   useEffect(() => {
-    if (latestTracking?.frame) setMaxFrame(latestTracking.frame);
-  }, [latestTracking]);
+    if (isLive || !isPlaying) return;
+    const FRAME_MS = 100; // 10Hz
+    let raf;
+    let last = performance.now();
+    let acc = 0;
+    replayFrameRef.current = sliderValue; // arranca en el frame donde está el slider
 
-  useEffect(() => {
-    if (isLive && displayData?.frame !== undefined) {
-       setSliderValue(prev => (prev !== displayData.frame ? displayData.frame : prev));
-    }
-  }, [displayData, isLive]);
+    const step = (now) => {
+      const buffer = historyRef.current || {};
+      const maxF = maxFrameRef.current;
+      acc += now - last;
+      last = now;
+      if (acc > 500) acc = FRAME_MS; // tras un parón (pestaña oculta) no spamear avances
 
-  // Game Loop
-  useEffect(() => {
-    let timeoutId;
-    if (!isLive && isPlaying) {
-      let delay = 40; 
-      const buffer = historyRef.current || {}; 
-      if (buffer[sliderValue] && buffer[sliderValue + 1]) {
-        try {
-          const tCurrent = new Date(buffer[sliderValue].timestamp.replace(' ', 'T')).getTime();
-          const tNext = new Date(buffer[sliderValue + 1].timestamp.replace(' ', 'T')).getTime();
-          const diff = tNext - tCurrent;
-          if (!isNaN(diff) && diff > 0) delay = Math.min(diff, 1000); 
-        } catch (e) {}
+      if (acc >= FRAME_MS) {
+        acc -= FRAME_MS;
+        const cur = replayFrameRef.current;
+        const next = cur >= maxF ? cur : nextPopulatedFrame(buffer, cur + 1, maxF);
+        if (next !== cur) {
+          replayFrameRef.current = next;
+          const frameData = buffer[next];
+          // slider + frame en el MISMO tick -> un solo render batched, sin que
+          // el efecto del hook fije el frame en fase passive (lo que anidaba updates).
+          setSliderValue(next);
+          if (frameData) setDisplayData(frameData);
+        }
       }
-      timeoutId = setTimeout(() => {
-        setSliderValue(prev => (prev >= maxFrame ? prev : prev + 1));
-      }, delay);
-    }
-    return () => clearTimeout(timeoutId);;
-  }, [sliderValue, isPlaying, isLive, maxFrame, historyRef]);
+      raf = requestAnimationFrame(step);
+    };
+
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLive, isPlaying]);
 
   // Catch-up
   useEffect(() => {
@@ -572,11 +600,11 @@ return (
                     {/* Área del Campo */}
                     <div className="flex-1 flex items-center justify-center relative min-h-0">
                          <div className="scale-[0.8] lg:scale-[0.9] xl:scale-100 transition-transform duration-500">
-                            <FootballPitch 
-                                matchState={displayData} 
+                            <FootballPitch
+                                matchState={displayData}
                                 latestEvent={latestEvent}
-                                playerMap={playerMap} 
-                                width={1150}   
+                                playerMap={playerMap}
+                                width={1150}
                                 height={720}
                                 onPlayerClick={handleSelectPlayer}
                             />
