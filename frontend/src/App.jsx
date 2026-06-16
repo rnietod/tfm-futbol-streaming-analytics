@@ -5,6 +5,7 @@ import {
   FastForward, Radio, BrainCircuit, TrendingUp, Users, LayoutGrid, BarChart3, Swords
 } from 'lucide-react';
 import FootballPitch from './components/FootballPitch';
+import PitchLayerMenu from './components/pitch/PitchLayerMenu';
 import GhostTicker from './components/GhostTicker';
 import DynamicBackground from './components/DynamicBackground';
 import PlayerGlassCard from './components/PlayerGlassCard';
@@ -168,7 +169,7 @@ const EventFeed = ({ events = [] }) => {
 }
 
 // --- COMPONENTE: CONTROLES ---
-const PlaybackControls = ({ currentTime, isLive, isPlaying, currentFrame, maxFrame, onSeek, onToggleLive, onTogglePlay }) => (
+const PlaybackControls = ({ currentTime, isLive, isPlaying, currentFrame, maxFrame, onSeek, onToggleLive, onTogglePlay, layers, onToggleLayer }) => (
   // CAMBIO: Estilos ajustados para vivir dentro del grid (ancho relativo, borde completo redondeado)
   <div className="w-full max-w-2xl mx-auto flex items-center gap-4 px-6 py-3 mt-4 rounded-2xl border border-white/10 bg-zinc-950/80 backdrop-blur-xl shadow-2xl">
     
@@ -216,6 +217,9 @@ const PlaybackControls = ({ currentTime, isLive, isPlaying, currentFrame, maxFra
         />
         {/* CAMBIO: Se quitaron los textos START / END */}
     </div>
+
+    {/* Menú de capas tácticas (desplegable hacia arriba) */}
+    <PitchLayerMenu layers={layers} onToggle={onToggleLayer} />
   </div>
 )
 
@@ -239,6 +243,11 @@ function App() {
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [servicesStatus, setServicesStatus] = useState({});
   const [statsTargetPlayer, setStatsTargetPlayer] = useState(null);
+
+  // Capas tácticas del campo (Voronoi / Pitch Control). Estado en App para compartirlo
+  // entre el campo (FootballPitch) y el menú desplegable de la barra (PlaybackControls).
+  const [layers, setLayers] = useState({ voronoi: false, pitchControl: false });
+  const toggleLayer = (key) => setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const handleViewPlayerStats = (player) => {
       setSelectedPlayer(null); // Cerrar modal
@@ -607,21 +616,24 @@ return (
                                 width={1150}
                                 height={720}
                                 onPlayerClick={handleSelectPlayer}
+                                layers={layers}
                             />
                          </div>
                     </div>
 
                     {/* FOOTER CONTROLS */}
                     <div className="w-full relative z-20 pb-2">
-                        <PlaybackControls 
-                            currentTime={formatTime(displayData?.timestamp)} 
+                        <PlaybackControls
+                            currentTime={formatTime(displayData?.timestamp)}
                             isLive={isLive}
-                            isPlaying={isPlaying} 
-                            currentFrame={sliderValue} 
-                            maxFrame={maxFrame} 
+                            isPlaying={isPlaying}
+                            currentFrame={sliderValue}
+                            maxFrame={maxFrame}
                             onSeek={handleSeek}
                             onToggleLive={handleGoLive}
                             onTogglePlay={handleTogglePlay}
+                            layers={layers}
+                            onToggleLayer={toggleLayer}
                         />
                     </div>
                 </section>
