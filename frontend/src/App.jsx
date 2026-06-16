@@ -14,6 +14,7 @@ import MatchStatsTab from './components/matchstats/MatchStatsTab';
 import DofaTab from './components/dofa/DofaTab';
 import { useMatchHistory } from './hooks/useMatchHistory';
 import { nextPopulatedFrame } from './lib/replayBuffer';
+import { eventReplayTarget } from './lib/eventReplay';
 
 // --- UTILIDADES ---
 const formatTime = (fullTimestamp) => {
@@ -25,7 +26,7 @@ const formatTime = (fullTimestamp) => {
 };
 
 // --- COMPONENTE: EVENT FEED ---
-const EventFeed = ({ events = [] }) => {
+const EventFeed = ({ events = [], onEventClick }) => {
   const ALLOWED_IDS = [6, 16, 18, 19, 21, 22, 23, 34, 40];
 
   const feedItems = useMemo(() => {
@@ -122,8 +123,10 @@ const EventFeed = ({ events = [] }) => {
            const timeFormatted = formatMatchTime(rawMinute);
 
            return (
-            <li key={item.uniqueKey} 
-                className="relative flex items-start gap-3 p-2 rounded-lg transition-all duration-200 hover:bg-white/5 border border-transparent hover:border-white/5 group"
+            <li key={item.uniqueKey}
+                onClick={() => onEventClick && onEventClick(item)}
+                title="Ver la jugada — salta el replay a 15s antes (30s si es gol)"
+                className="relative flex items-start gap-3 p-2 rounded-lg transition-all duration-200 hover:bg-white/5 border border-transparent hover:border-white/5 group cursor-pointer"
             >
               {/* Timeline Line (Visual Candy) */}
               <div className="absolute left-[19px] top-8 bottom-[-8px] w-[1px] bg-zinc-800 group-last:hidden" />
@@ -137,7 +140,8 @@ const EventFeed = ({ events = [] }) => {
                     <span className={`text-[10px] font-bold uppercase tracking-wider truncate ${color}`}>
                         {rawType}
                     </span>
-                    <span className="font-mono text-zinc-500 text-[9px] bg-black/30 px-1 rounded">
+                    <span className="font-mono text-zinc-500 text-[9px] bg-black/30 px-1 rounded flex items-center gap-1">
+                        <Play size={8} className="text-primary opacity-0 group-hover:opacity-100 transition-opacity" fill="currentColor" />
                         {timeFormatted}
                     </span>
                 </div>
@@ -409,13 +413,37 @@ function App() {
   }, [sliderValue, maxFrame, isLive, isPlaying]);
 
   // Handlers
+  // isLiveRef se actualiza SÍNCRONO (no solo por efecto) para que el onmessage del
+  // WS respete al instante el cambio de modo y no reescriba el slider (carrera que
+  // revertía los saltos a replay).
   const handleSeek = (val) => {
+    isLiveRef.current = false;
     setIsLive(false);
     setIsPlaying(false);
     setSliderValue(val);
   };
   const handleTogglePlay = () => setIsPlaying(!isPlaying);
-  const handleGoLive = () => { setIsLive(true); setIsPlaying(false); };
+  const handleGoLive = () => { isLiveRef.current = true; setIsLive(true); setIsPlaying(false); };
+
+  // Click en un evento del feed -> salta el replay a 15s antes de la jugada
+  // (30s si es gol) y reproduce. El mapeo tiempo->frame lo resuelve el backend
+  // (frame_at) por el reloj de juego, no por frame_idx (evita asumir fps).
+  const handleJumpToEvent = async (evt) => {
+    if (!evt) return;
+    const { period, seconds } = eventReplayTarget(evt);
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/match/test_match/frame_at?period=${period}&seconds=${seconds}`);
+      const data = await res.json();
+      if (data && data.frame_idx != null) {
+        isLiveRef.current = false;
+        setIsLive(false);
+        setSliderValue(data.frame_idx);
+        setIsPlaying(true);
+      }
+    } catch (e) {
+      console.warn('Error frame_at:', e);
+    }
+  };
 
   // Metadata
   useEffect(() => {
@@ -589,7 +617,7 @@ return (
             <main className="flex-1 min-h-0 grid grid-cols-12 gap-0 relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-900/10 via-zinc-950/30 to-zinc-950/50">
                 {/* IZQUIERDA: FEED */}
                 <aside className="col-span-3 lg:col-span-2 min-h-0 flex flex-col z-20 shadow-[5px_0_30px_rgba(0,0,0,0.3)]">
-                    <EventFeed events={eventsList} />
+                    <EventFeed events={eventsList} onEventClick={handleJumpToEvent} />
                 </aside>
 
                 {/* DERECHA: CAMPO + CONTROLES */}

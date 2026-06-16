@@ -415,6 +415,44 @@ def get_tracking_history(
         return {"error": "Error recuperando histÃ³rico de tracking", "details": str(e)}
 
 
+@app.get("/match/{match_id}/frame_at")
+def get_frame_at(
+    match_id: str,
+    period: float = Query(..., description="Periodo del partido"),
+    seconds: float = Query(..., description="Segundo de juego (dentro del periodo) objetivo"),
+):
+    """
+    Devuelve el frame_idx cuyo reloj de juego esta mas cerca de `seconds` dentro del
+    `period`. El reloj real vive en players_data->>'timestamp' (la parte horaria; la
+    fecha es basura) + players_data->>'period'. Se usa para saltar el replay a una jugada.
+    """
+    engine = get_db_engine()
+    try:
+        with engine.connect() as conn:
+            query = text("""
+                SELECT frame_idx
+                FROM match_tracking
+                WHERE match_id = :mid
+                  AND (players_data->>'period')::float = :period
+                  AND players_data->>'timestamp' IS NOT NULL
+                ORDER BY ABS(
+                    EXTRACT(EPOCH FROM (players_data->>'timestamp')::time) - :seconds
+                ) ASC
+                LIMIT 1
+            """)
+            row = conn.execute(query, {
+                "mid": match_id,
+                "period": period,
+                "seconds": seconds,
+            }).first()
+            if row is None:
+                return {"frame_idx": None, "error": "Sin frame para ese periodo/tiempo"}
+            return {"frame_idx": int(row.frame_idx)}
+    except Exception as e:
+        print(f"Error frame_at: {e}")
+        return {"frame_idx": None, "error": str(e)}
+
+
 @app.get("/match/{match_id}/events/history")
 def get_events_history(match_id: str):
     """

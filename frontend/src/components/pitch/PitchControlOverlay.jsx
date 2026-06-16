@@ -13,7 +13,7 @@ import { pitchControlField, estimateVelocities, controlColor } from '../../lib/p
 // ============================================================
 const NX = 84;
 const NY = 56;
-const FPS = 25; // los frame_idx vienen a 25 fps (origen)
+const FPS = 10; // los frame_idx avanzan 10 por segundo de juego (verificado en datos)
 
 const PitchControlOverlay = ({ points = [], frame, bounds, width, height, active = false }) => {
   const canvasRef = useRef(null);
