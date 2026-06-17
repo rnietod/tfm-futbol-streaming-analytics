@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts';
 import PlayerAvatar from './PlayerAvatar';
 
@@ -36,7 +37,7 @@ const PlayerHoverCard = ({ player, x, y }) => {
   const devColor = dev === null ? '#a1a1aa' : (dev >= 0 ? '#17c964' : '#f31260');
   const actualColor = dev !== null && dev < 0 ? '#f31260' : '#17c964';
 
-  return (
+  return createPortal((
     <div
       className="fixed z-[200] w-56 rounded-xl bg-zinc-950/95 backdrop-blur-xl border border-white/10
                  shadow-2xl p-3 pointer-events-none animate-in fade-in zoom-in-95 duration-150"
@@ -79,7 +80,7 @@ const PlayerHoverCard = ({ player, x, y }) => {
         Click para comparar →
       </div>
     </div>
-  );
+  ), document.body);
 };
 
 export default PlayerHoverCard;
