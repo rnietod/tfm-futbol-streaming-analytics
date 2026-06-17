@@ -5,6 +5,7 @@ import {
   FastForward, Radio, BrainCircuit, TrendingUp, Users, LayoutGrid, BarChart3, Swords
 } from 'lucide-react';
 import FootballPitch from './components/FootballPitch';
+import PitchLayerMenu from './components/pitch/PitchLayerMenu';
 import GhostTicker from './components/GhostTicker';
 import DynamicBackground from './components/DynamicBackground';
 import PlayerGlassCard from './components/PlayerGlassCard';
@@ -12,6 +13,8 @@ import TactixLogo from './components/TactixLogo';
 import MatchStatsTab from './components/matchstats/MatchStatsTab';
 import DofaTab from './components/dofa/DofaTab';
 import { useMatchHistory } from './hooks/useMatchHistory';
+import { nextPopulatedFrame } from './lib/replayBuffer';
+import { eventReplayTarget } from './lib/eventReplay';
 
 // --- UTILIDADES ---
 const formatTime = (fullTimestamp) => {
@@ -23,7 +26,7 @@ const formatTime = (fullTimestamp) => {
 };
 
 // --- COMPONENTE: EVENT FEED ---
-const EventFeed = ({ events = [] }) => {
+const EventFeed = ({ events = [], onEventClick }) => {
   const ALLOWED_IDS = [6, 16, 18, 19, 21, 22, 23, 34, 40];
 
   const feedItems = useMemo(() => {
@@ -120,8 +123,10 @@ const EventFeed = ({ events = [] }) => {
            const timeFormatted = formatMatchTime(rawMinute);
 
            return (
-            <li key={item.uniqueKey} 
-                className="relative flex items-start gap-3 p-2 rounded-lg transition-all duration-200 hover:bg-white/5 border border-transparent hover:border-white/5 group"
+            <li key={item.uniqueKey}
+                onClick={() => onEventClick && onEventClick(item)}
+                title="Ver la jugada — salta el replay a 15s antes (30s si es gol)"
+                className="relative flex items-start gap-3 p-2 rounded-lg transition-all duration-200 hover:bg-white/5 border border-transparent hover:border-white/5 group cursor-pointer"
             >
               {/* Timeline Line (Visual Candy) */}
               <div className="absolute left-[19px] top-8 bottom-[-8px] w-[1px] bg-zinc-800 group-last:hidden" />
@@ -135,7 +140,8 @@ const EventFeed = ({ events = [] }) => {
                     <span className={`text-[10px] font-bold uppercase tracking-wider truncate ${color}`}>
                         {rawType}
                     </span>
-                    <span className="font-mono text-zinc-500 text-[9px] bg-black/30 px-1 rounded">
+                    <span className="font-mono text-zinc-500 text-[9px] bg-black/30 px-1 rounded flex items-center gap-1">
+                        <Play size={8} className="text-primary opacity-0 group-hover:opacity-100 transition-opacity" fill="currentColor" />
                         {timeFormatted}
                     </span>
                 </div>
@@ -167,7 +173,7 @@ const EventFeed = ({ events = [] }) => {
 }
 
 // --- COMPONENTE: CONTROLES ---
-const PlaybackControls = ({ currentTime, isLive, isPlaying, currentFrame, maxFrame, onSeek, onToggleLive, onTogglePlay }) => (
+const PlaybackControls = ({ currentTime, isLive, isPlaying, currentFrame, maxFrame, onSeek, onToggleLive, onTogglePlay, layers, onToggleLayer }) => (
   // CAMBIO: Estilos ajustados para vivir dentro del grid (ancho relativo, borde completo redondeado)
   <div className="w-full max-w-2xl mx-auto flex items-center gap-4 px-6 py-3 mt-4 rounded-2xl border border-white/10 bg-zinc-950/80 backdrop-blur-xl shadow-2xl">
     
@@ -215,6 +221,9 @@ const PlaybackControls = ({ currentTime, isLive, isPlaying, currentFrame, maxFra
         />
         {/* CAMBIO: Se quitaron los textos START / END */}
     </div>
+
+    {/* Menú de capas tácticas (desplegable hacia arriba) */}
+    <PitchLayerMenu layers={layers} onToggle={onToggleLayer} />
   </div>
 )
 
@@ -238,6 +247,11 @@ function App() {
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [servicesStatus, setServicesStatus] = useState({});
   const [statsTargetPlayer, setStatsTargetPlayer] = useState(null);
+
+  // Capas tácticas del campo (Voronoi / Pitch Control). Estado en App para compartirlo
+  // entre el campo (FootballPitch) y el menú desplegable de la barra (PlaybackControls).
+  const [layers, setLayers] = useState({ voronoi: false, pitchControl: false });
+  const toggleLayer = (key) => setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const handleViewPlayerStats = (player) => {
       setSelectedPlayer(null); // Cerrar modal
@@ -282,12 +296,21 @@ function App() {
   };
 
   // Hook de Historial
-  const { 
-    displayData,   
-    events: historyEvents, 
+  const {
+    displayData,
+    setDisplayData,
+    events: historyEvents,
     isLoadingHistory,
     historyRef
-  } = useMatchHistory("test_match", isLive, sliderValue, latestTracking);
+  } = useMatchHistory("test_match", isLive, sliderValue, latestTracking, isPlaying);
+
+  // maxFrame y el frame de replay se leen por ref dentro del bucle rAF para no
+  // reiniciarlo en cada frame del live ni depender de sliderValue.
+  const maxFrameRef = useRef(0);
+  const replayFrameRef = useRef(0);
+  const isLiveRef = useRef(isLive);
+  useEffect(() => { maxFrameRef.current = maxFrame; }, [maxFrame]);
+  useEffect(() => { isLiveRef.current = isLive; }, [isLive]);
 
   // Sincronización Eventos
   useEffect(() => {
@@ -313,7 +336,15 @@ function App() {
         const msg = JSON.parse(e.data);
         if (msg.type === "tracking") {
           setLatestTracking(msg.payload);
-        } 
+          // maxFrame y (en live) el slider se fijan aquí, batched con setLatestTracking,
+          // en vez de en useEffects separados: evita setStates anidados que hacían trepar
+          // el contador de updates de React (renders abortados -> tirón "robótico").
+          const f = msg.payload?.frame;
+          if (f) {
+            setMaxFrame(prev => (f > prev ? f : prev));
+            if (isLiveRef.current) setSliderValue(f);
+          }
+        }
         else if (msg.type === "event") {
           const newEvent = msg.payload;
           if (newEvent) {
@@ -331,37 +362,47 @@ function App() {
     return () => ws.current?.close();
   }, []);
 
-  // Sync Frames
+  // Game Loop (replay): cadencia de reloj real con rAF + acumulador.
+  // Avanza un frame poblado cada 100ms (10Hz, igual que el live) saltando los
+  // frames vacíos (53%). Un único rAF persistente por sesión de play elimina el
+  // jitter del setTimeout encadenado y el churn de recrear el efecto cada frame.
+  // Actualiza el estado ~10 veces/seg (como el live) -> sin tormenta de renders;
+  // la transición CSS de 0.1s suaviza entre frames.
   useEffect(() => {
-    if (latestTracking?.frame) setMaxFrame(latestTracking.frame);
-  }, [latestTracking]);
+    if (isLive || !isPlaying) return;
+    const FRAME_MS = 100; // 10Hz
+    let raf;
+    let last = performance.now();
+    let acc = 0;
+    replayFrameRef.current = sliderValue; // arranca en el frame donde está el slider
 
-  useEffect(() => {
-    if (isLive && displayData?.frame !== undefined) {
-       setSliderValue(prev => (prev !== displayData.frame ? displayData.frame : prev));
-    }
-  }, [displayData, isLive]);
+    const step = (now) => {
+      const buffer = historyRef.current || {};
+      const maxF = maxFrameRef.current;
+      acc += now - last;
+      last = now;
+      if (acc > 500) acc = FRAME_MS; // tras un parón (pestaña oculta) no spamear avances
 
-  // Game Loop
-  useEffect(() => {
-    let timeoutId;
-    if (!isLive && isPlaying) {
-      let delay = 40; 
-      const buffer = historyRef.current || {}; 
-      if (buffer[sliderValue] && buffer[sliderValue + 1]) {
-        try {
-          const tCurrent = new Date(buffer[sliderValue].timestamp.replace(' ', 'T')).getTime();
-          const tNext = new Date(buffer[sliderValue + 1].timestamp.replace(' ', 'T')).getTime();
-          const diff = tNext - tCurrent;
-          if (!isNaN(diff) && diff > 0) delay = Math.min(diff, 1000); 
-        } catch (e) {}
+      if (acc >= FRAME_MS) {
+        acc -= FRAME_MS;
+        const cur = replayFrameRef.current;
+        const next = cur >= maxF ? cur : nextPopulatedFrame(buffer, cur + 1, maxF);
+        if (next !== cur) {
+          replayFrameRef.current = next;
+          const frameData = buffer[next];
+          // slider + frame en el MISMO tick -> un solo render batched, sin que
+          // el efecto del hook fije el frame en fase passive (lo que anidaba updates).
+          setSliderValue(next);
+          if (frameData) setDisplayData(frameData);
+        }
       }
-      timeoutId = setTimeout(() => {
-        setSliderValue(prev => (prev >= maxFrame ? prev : prev + 1));
-      }, delay);
-    }
-    return () => clearTimeout(timeoutId);;
-  }, [sliderValue, isPlaying, isLive, maxFrame, historyRef]);
+      raf = requestAnimationFrame(step);
+    };
+
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLive, isPlaying]);
 
   // Catch-up
   useEffect(() => {
@@ -372,13 +413,37 @@ function App() {
   }, [sliderValue, maxFrame, isLive, isPlaying]);
 
   // Handlers
+  // isLiveRef se actualiza SÍNCRONO (no solo por efecto) para que el onmessage del
+  // WS respete al instante el cambio de modo y no reescriba el slider (carrera que
+  // revertía los saltos a replay).
   const handleSeek = (val) => {
+    isLiveRef.current = false;
     setIsLive(false);
     setIsPlaying(false);
     setSliderValue(val);
   };
   const handleTogglePlay = () => setIsPlaying(!isPlaying);
-  const handleGoLive = () => { setIsLive(true); setIsPlaying(false); };
+  const handleGoLive = () => { isLiveRef.current = true; setIsLive(true); setIsPlaying(false); };
+
+  // Click en un evento del feed -> salta el replay a 15s antes de la jugada
+  // (30s si es gol) y reproduce. El mapeo tiempo->frame lo resuelve el backend
+  // (frame_at) por el reloj de juego, no por frame_idx (evita asumir fps).
+  const handleJumpToEvent = async (evt) => {
+    if (!evt) return;
+    const { period, seconds } = eventReplayTarget(evt);
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/match/test_match/frame_at?period=${period}&seconds=${seconds}`);
+      const data = await res.json();
+      if (data && data.frame_idx != null) {
+        isLiveRef.current = false;
+        setIsLive(false);
+        setSliderValue(data.frame_idx);
+        setIsPlaying(true);
+      }
+    } catch (e) {
+      console.warn('Error frame_at:', e);
+    }
+  };
 
   // Metadata
   useEffect(() => {
@@ -552,7 +617,7 @@ return (
             <main className="flex-1 min-h-0 grid grid-cols-12 gap-0 relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-900/10 via-zinc-950/30 to-zinc-950/50">
                 {/* IZQUIERDA: FEED */}
                 <aside className="col-span-3 lg:col-span-2 min-h-0 flex flex-col z-20 shadow-[5px_0_30px_rgba(0,0,0,0.3)]">
-                    <EventFeed events={eventsList} />
+                    <EventFeed events={eventsList} onEventClick={handleJumpToEvent} />
                 </aside>
 
                 {/* DERECHA: CAMPO + CONTROLES */}
@@ -572,28 +637,31 @@ return (
                     {/* Área del Campo */}
                     <div className="flex-1 flex items-center justify-center relative min-h-0">
                          <div className="scale-[0.8] lg:scale-[0.9] xl:scale-100 transition-transform duration-500">
-                            <FootballPitch 
-                                matchState={displayData} 
+                            <FootballPitch
+                                matchState={displayData}
                                 latestEvent={latestEvent}
-                                playerMap={playerMap} 
-                                width={1150}   
+                                playerMap={playerMap}
+                                width={1150}
                                 height={720}
                                 onPlayerClick={handleSelectPlayer}
+                                layers={layers}
                             />
                          </div>
                     </div>
 
                     {/* FOOTER CONTROLS */}
                     <div className="w-full relative z-20 pb-2">
-                        <PlaybackControls 
-                            currentTime={formatTime(displayData?.timestamp)} 
+                        <PlaybackControls
+                            currentTime={formatTime(displayData?.timestamp)}
                             isLive={isLive}
-                            isPlaying={isPlaying} 
-                            currentFrame={sliderValue} 
-                            maxFrame={maxFrame} 
+                            isPlaying={isPlaying}
+                            currentFrame={sliderValue}
+                            maxFrame={maxFrame}
                             onSeek={handleSeek}
                             onToggleLive={handleGoLive}
                             onTogglePlay={handleTogglePlay}
+                            layers={layers}
+                            onToggleLayer={toggleLayer}
                         />
                     </div>
                 </section>

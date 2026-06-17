@@ -1,12 +1,19 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import PlayerMarker from './PlayerMarker';
+import VoronoiOverlay from './pitch/VoronoiOverlay';
+import PitchControlOverlay from './pitch/PitchControlOverlay';
+import { buildPoints, buildMetricPoints } from '../lib/pitchModels';
 
 // Dimensiones Oficiales
 const REAL_PITCH_LENGTH = 105;
 const REAL_PITCH_WIDTH = 68;
 
-const FootballPitch = ({ matchState, latestEvent, playerMap = {}, width = 1100, height = 700, onPlayerClick }) => {
-  
+const FootballPitch = ({ matchState, latestEvent, playerMap = {}, width = 1100, height = 700, onPlayerClick, layers = {} }) => {
+
+  // Último frame con jugadores: los ~53% de frames vacíos (gaps de detección) harían
+  // parpadear marcadores y capas. Mantenemos el último válido para una vista estable.
+  const lastGoodRef = useRef(null);
+
   // (Funciones de conversión matemática IGUAL QUE ANTES...)
   const trackingToPixels = (x_meters, y_meters) => {
     if (x_meters === null || y_meters === null || x_meters === undefined) return { x: -100, y: -100 };
@@ -46,8 +53,22 @@ const FootballPitch = ({ matchState, latestEvent, playerMap = {}, width = 1100, 
     );
   }
 
-  const players = matchState.player_data;
-  const ball = matchState.ball_data;
+  // Frame efectivo: si el actual no trae jugadores (frame vacío), usamos el último válido.
+  const hasPlayers = Array.isArray(matchState.player_data)
+    && matchState.player_data.some((p) => p && p.x != null);
+  if (hasPlayers) lastGoodRef.current = matchState;
+  const frameState = hasPlayers ? matchState : (lastGoodRef.current || matchState);
+
+  const players = frameState.player_data;
+  const ball = frameState.ball_data;
+
+  // Área de juego en píxeles (clip de Voronoi) y puntos de los jugadores en el
+  // mismo espacio que los marcadores (vía trackingToPixels).
+  const PAD_X = width * 0.05;
+  const PAD_Y = height * 0.05;
+  const pitchBounds = [PAD_X, PAD_Y, width - PAD_X, height - PAD_Y];
+  const points = buildPoints(players, playerMap, trackingToPixels);
+  const metricPoints = layers.pitchControl ? buildMetricPoints(players, playerMap) : [];
 
   return (
     <div 
@@ -73,6 +94,25 @@ const FootballPitch = ({ matchState, latestEvent, playerMap = {}, width = 1100, 
          </g>
          <rect x="0" y="0" width="100%" height="100%" fill="none" stroke="rgba(0, 242, 255, 0.1)" strokeWidth="4" className="animate-pulse-slow"/>
       </svg>
+
+      {/* CAPAS TÁCTICAS */}
+      <PitchControlOverlay
+        points={metricPoints}
+        frame={frameState.frame}
+        bounds={pitchBounds}
+        width={width}
+        height={height}
+        active={layers.pitchControl}
+      />
+
+      <VoronoiOverlay
+        points={points}
+        bounds={pitchBounds}
+        width={width}
+        height={height}
+        active={layers.voronoi}
+        combined={layers.pitchControl}
+      />
 
       {latestEvent && latestEvent.raw_x && (
         <div 
