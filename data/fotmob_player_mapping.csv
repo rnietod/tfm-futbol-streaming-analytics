@@ -1,0 +1,47 @@
+tracking_player_id,fotmob_id,player_name,fotmob_name,shirt_number,team_id,confidence,source,status,has_image
+44876,1253890,A. Güler,Arda Güler,15,262,100,squad+num,MATCHED,True
+12248,800882,A. Lunin,Andriy Lunin,13,262,100,squad+num,MATCHED,True
+12218,914458,A. Tchouaméni,Aurélien Tchouaméni,14,262,100,squad+num,MATCHED,True
+11592,750027,Brahim Diaz,Brahim Díaz,21,262,100,squad+num,MATCHED,True
+2395,121633,D. Alaba,David Alaba,4,262,100,squad+num,MATCHED,True
+2189,282674,Dani Carvajal,Daniel Carvajal,2,262,100,squad+num,MATCHED,True
+2190,531629,Dani Ceballos,Dani Ceballos,19,262,100,squad+num,MATCHED,True
+166770,1367619,Dean Huijsen,Dean Huijsen,24,262,100,squad+num,MATCHED,True
+22103,1015185,E. Camavinga,Eduardo Camavinga,6,262,100,squad+num,MATCHED,True
+259174,1406729,Endrick,Endrick,9,262,100,suggest,MATCHED,True
+799313,1607566,F. Mastantuono,Franco Mastantuono,30,262,100,squad+num,MATCHED,True
+12251,743533,F. Valverde,Federico Valverde,8,262,100,squad+num,MATCHED,True
+31993,750028,Fran García,Fran García,20,262,100,squad+num,MATCHED,True
+70520,1413847,Gonzalo García,Gonzalo García,16,262,100,squad+num,MATCHED,True
+24583,1077894,J. Bellingham,Jude Bellingham,5,262,100,squad+num,MATCHED,True
+6028,701154,K. Mbappé,Kylian Mbappé,10,262,100,squad+num,MATCHED,True
+70532,1580528,Raúl Asencio,Raúl Asencio,17,262,100,squad+num,MATCHED,True
+23903,895362,Rodrygo,Rodrygo,11,262,100,squad+num,MATCHED,True
+120539,1405014,Sergio Mestre,Sergio Mestre,43,262,100,suggest,MATCHED,True
+10261,170323,T. Courtois,Thibaut Courtois,1,262,100,squad+num,MATCHED,True
+12253,846033,Vinícius Júnior,Vinícius Júnior,7,262,100,squad+num,MATCHED,True
+67581,1190025,Álvaro Carreras,Alvaro Carreras,18,262,100,squad+num,MATCHED,True
+12662,844415,Éder Militão,Éder Militao,3,262,100,squad+num,MATCHED,True
+946,184138,A. Griezmann,Antoine Griezmann,7,275,100,squad+num,MATCHED,True
+12023,440330,A. Sørloth,Alexander Sørloth,9,275,100,squad+num,MATCHED,True
+12106,966027,C. Gallagher,Conor Gallagher,4,275,100,suggest,MATCHED,True
+11623,488412,C. Lenglet,Clément Lenglet,15,275,100,squad+num,MATCHED,True
+70885,1282015,Carlos Martín,Carlos Martín,12,275,100,suggest,MATCHED,True
+14063,727897,D. Hancko,Dávid Hancko,17,275,100,squad+num,MATCHED,True
+14168,951743,G. Raspadori,Giacomo Raspadori,22,275,100,suggest,MATCHED,True
+42437,1226147,G. Simeone,Giuliano Simeone,20,275,100,squad+num,MATCHED,True
+659730,1407076,I. Kostis,Ilias Kostis,26,275,100,suggest,MATCHED,True
+14085,389050,J. Musso,Juan Musso,1,275,100,squad+num,MATCHED,True
+4713,177126,J. Oblak,Jan Oblak,13,275,100,squad+num,MATCHED,True
+24955,974753,J. Álvarez,Julián Álvarez,19,275,100,squad+num,MATCHED,True
+25625,695062,Javi Galán,Javi Galán,21,275,100,suggest,MATCHED,True
+5942,184533,Koke,Koke,6,275,100,squad+num,MATCHED,True
+32478,1051097,M. Ruggeri,Matteo Ruggeri,3,275,100,squad+num,MATCHED,True
+91191,1323897,Marc Pubill,Marc Pubill,18,275,100,squad+num,MATCHED,True
+11608,602563,Marcos Llorente,Marcos Llorente,14,275,100,squad+num,MATCHED,True
+19061,841672,N. González,Nicolás González,23,275,100,squad+num,MATCHED,True
+26571,726345,N. Molina,Nahuel Molina,16,275,100,squad+num,MATCHED,True
+118870,1338192,Pablo Barrios,Pablo Barrios,8,275,100,squad+num,MATCHED,True
+20233,609516,Robin Le Normand,Robin Le Normand,24,275,100,squad+num,MATCHED,True
+826091,1664743,Taufik Seidu,Taufik Seidu,28,275,100,suggest,MATCHED,True
+25697,942372,Álex Baena,Álex Baena,10,275,100,squad+num,MATCHED,True

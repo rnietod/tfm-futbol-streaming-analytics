@@ -8,9 +8,11 @@ import os
 import csv
 from src.data.postgres_client import get_db_engine
 from sqlalchemy import text
+from src.services.ghost_engine import GhostEngine
 import subprocess
 import sys
 from fastapi import HTTPException
+from fastapi.responses import Response
 
 # --- Player ID Mapping (opta <-> tracking) ---
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -66,6 +68,55 @@ app.add_middleware(
 )
 
 redis_conn = get_redis_connection()
+
+
+# ==========================================
+# 🖼️  PROXY DE FOTOS DE JUGADORES
+# El bucket de GCS es privado (datalake crudo). El frontend nunca lo toca:
+# pide /player-images/{tracking_id}.png y este proxy lee el objeto con ADC.
+# ==========================================
+try:
+    from google.cloud import storage as _gcs_storage
+except Exception:
+    _gcs_storage = None
+
+_GCS_PROJECT = "tfm-master-futbol"
+_GCS_BUCKET_NAME = "tfm-datalake-raw-futbol"
+_PLAYER_IMG_PREFIX = "images/players"
+_gcs_bucket = None
+_player_img_cache = {}  # tracking_id -> bytes | None (cachea aciertos y fallos)
+
+
+def _get_player_bucket():
+    global _gcs_bucket
+    if _gcs_bucket is None and _gcs_storage is not None:
+        try:
+            _gcs_bucket = _gcs_storage.Client(project=_GCS_PROJECT).bucket(_GCS_BUCKET_NAME)
+        except Exception as e:
+            print(f"⚠️ No se pudo inicializar GCS para fotos: {e}")
+    return _gcs_bucket
+
+
+@app.get("/player-images/{tracking_id}.png")
+def get_player_image(tracking_id: int):
+    """Sirve la foto del jugador desde el bucket privado de GCS (proxy con caché en memoria)."""
+    if tracking_id not in _player_img_cache:
+        data = None
+        bucket = _get_player_bucket()
+        if bucket is not None:
+            try:
+                blob = bucket.blob(f"{_PLAYER_IMG_PREFIX}/{tracking_id}.png")
+                if blob.exists():
+                    data = blob.download_as_bytes()
+            except Exception as e:
+                print(f"⚠️ player-image GCS error {tracking_id}: {e}")
+        _player_img_cache[tracking_id] = data
+
+    data = _player_img_cache[tracking_id]
+    if data is None:
+        raise HTTPException(status_code=404, detail="player image not found")
+    return Response(content=data, media_type="image/png",
+                    headers={"Cache-Control": "public, max-age=86400"})
 
 
 # ==========================================
@@ -206,42 +257,227 @@ def get_match_metadata(match_id: str):
         return {"error": "Error de conexiÃ³n con Base de Datos"}
 
 
-@app.get("/match/{match_id}/player/{player_id}/profile")
-def get_player_profile(match_id: str, player_id: int, state: str = "Drawing"):
+def compute_live_player_stats(match_id: str, up_to_minute: int = None):
     """
-    Obtiene el perfil ghost de BigQuery basado en el estado del partido (Winning, Losing, Drawing).
+    Agrega stats por jugador desde match_events en el formato que consume
+    GhostEngine (traduce opta_player_id -> tracking_player_id).
+
+    Mapeo de eventos (esquema StatsBomb en Postgres):
+      shots=16, goals=16+outcome 97, xg=SUM(xg en tiros),
+      progressive=pase 30 completado con avance >10, interceptions=10, recoveries=2.
+    key_passes se OMITE (sin flag fiable en match_events) -> el engine la ignora.
+    """
+    engine = get_db_engine()
+    minute_clause = "AND minute <= :upto" if up_to_minute is not None else ""
+    params = {"mid": match_id}
+    if up_to_minute is not None:
+        params["upto"] = up_to_minute
+
+    with engine.connect() as conn:
+        roster = {}
+        for r in conn.execute(text(
+            "SELECT player_id, team_id, name, dorsal FROM match_players WHERE match_id = :mid"
+        ), {"mid": match_id}):
+            roster[str(r.player_id)] = {"team_id": r.team_id, "name": r.name, "number": r.dorsal}
+
+        rows = conn.execute(text(f"""
+            SELECT player_id AS opta_id,
+                   MAX(player_name) AS name,
+                   SUM(CASE WHEN event_type_id = 16 AND outcome_id = 97 THEN 1 ELSE 0 END) AS goals,
+                   SUM(CASE WHEN event_type_id = 16 THEN 1 ELSE 0 END) AS shots,
+                   SUM(CASE WHEN event_type_id = 16 THEN COALESCE(xg, 0) ELSE 0 END) AS xg,
+                   SUM(CASE WHEN event_type_id = 30 AND outcome_id IS NULL
+                            AND end_location_x IS NOT NULL AND location_x IS NOT NULL
+                            AND (end_location_x - location_x) > 10 THEN 1 ELSE 0 END) AS progressive,
+                   SUM(CASE WHEN event_type_id = 10 THEN 1 ELSE 0 END) AS interceptions,
+                   SUM(CASE WHEN event_type_id = 2 THEN 1 ELSE 0 END) AS recoveries,
+                   MIN(minute) AS min_min, MAX(minute) AS max_min
+            FROM match_events
+            WHERE match_id = :mid AND player_id IS NOT NULL {minute_clause}
+            GROUP BY player_id
+        """), params).fetchall()
+
+    out = []
+    for r in rows:
+        opta = str(r.opta_id).split(".")[0]
+        tracking = _OPTA_TO_TRACKING.get(opta, opta)
+        try:
+            tid = int(tracking)
+        except (ValueError, TypeError):
+            continue
+        info = roster.get(str(tid), {})
+        minutes = 0
+        if r.max_min is not None and r.min_min is not None:
+            minutes = max(0, (r.max_min - r.min_min) + 1)
+        out.append({
+            "player_id": tid,
+            "name": info.get("name") or r.name,
+            "number": info.get("number"),
+            "team_id": info.get("team_id"),
+            "minutes": minutes,
+            "xg": float(r.xg or 0),
+            "shots": int(r.shots or 0),
+            "goals": int(r.goals or 0),
+            "progressive": int(r.progressive or 0),
+            "interceptions": int(r.interceptions or 0),
+            "recoveries": int(r.recoveries or 0),
+            # key_passes: omitido a propósito (sin flag en match_events)
+        })
+    return out
+
+
+def compute_player_match_detail(match_id: str, tracking_id: int):
+    """
+    Métricas detalladas del partido para UN jugador (panel de comparación).
+    Devuelve conteos crudos desde match_events (eventos, pases, precisión,
+    tiros a puerta, pases clave≈, centros, pases largos/cortos, etc.).
+    """
+    opta = _TRACKING_TO_OPTA.get(str(tracking_id))
+    if not opta:
+        return None
+    engine = get_db_engine()
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT
+                COUNT(*) AS events,
+                SUM(CASE WHEN event_type_id = 30 THEN 1 ELSE 0 END) AS passes,
+                SUM(CASE WHEN event_type_id = 30 AND outcome_id IS NULL THEN 1 ELSE 0 END) AS passes_completed,
+                SUM(CASE WHEN event_type_id = 16 THEN 1 ELSE 0 END) AS shots,
+                SUM(CASE WHEN event_type_id = 16 AND (type_id = 88 OR outcome_id = 97)
+                         THEN 1 ELSE 0 END) AS shots_on_target,
+                SUM(CASE WHEN event_type_id = 16 AND outcome_id = 97 THEN 1 ELSE 0 END) AS goals,
+                SUM(CASE WHEN event_type_id = 30 AND type_name = 'Cross' THEN 1 ELSE 0 END) AS crosses,
+                SUM(CASE WHEN event_type_id = 30 AND pass_length > 32 THEN 1 ELSE 0 END) AS long_passes,
+                SUM(CASE WHEN event_type_id = 30 AND pass_length IS NOT NULL
+                         AND pass_length <= 18 THEN 1 ELSE 0 END) AS short_passes,
+                SUM(CASE WHEN event_type_id = 2 THEN 1 ELSE 0 END) AS recoveries,
+                SUM(CASE WHEN event_type_id = 10 THEN 1 ELSE 0 END) AS interceptions
+            FROM match_events
+            WHERE match_id = :mid AND player_id = :opta
+        """), {"mid": match_id, "opta": opta}).fetchone()
+
+        # Pases clave ≈ pase completado del jugador seguido inmediatamente de un tiro del mismo equipo
+        key_passes = conn.execute(text("""
+            SELECT COUNT(*) FROM match_events p
+            JOIN match_events n
+              ON n.match_id = p.match_id AND n.event_index = p.event_index + 1
+            WHERE p.match_id = :mid AND p.player_id = :opta
+              AND p.event_type_id = 30 AND p.outcome_id IS NULL
+              AND n.event_type_id = 16 AND n.team_name = p.team_name
+        """), {"mid": match_id, "opta": opta}).scalar()
+
+    if not row:
+        return None
+    passes = int(row.passes or 0)
+    completed = int(row.passes_completed or 0)
+    return {
+        "events": int(row.events or 0),
+        "passes": passes,
+        "passes_completed": completed,
+        "pass_accuracy": round(100 * completed / passes) if passes else 0,
+        "shots": int(row.shots or 0),
+        "shots_on_target": int(row.shots_on_target or 0),
+        "goals": int(row.goals or 0),
+        "key_passes": int(key_passes or 0),
+        "crosses": int(row.crosses or 0),
+        "long_passes": int(row.long_passes or 0),
+        "short_passes": int(row.short_passes or 0),
+        "recoveries": int(row.recoveries or 0),
+        "interceptions": int(row.interceptions or 0),
+    }
+
+
+@app.get("/match/{match_id}/ghost/ticker")
+def get_ghost_ticker(match_id: str, up_to_minute: int = None):
+    """
+    Ranking de desviación (en σ) por jugador para el ticker Ghost.
     """
     try:
-        engine = get_db_engine()
-        with engine.connect() as conn:
-            # Translate opta_player_id -> tracking_player_id using dim_player_mapping if possible
-            opta_str = str(player_id)
-            tracking_id = _OPTA_TO_TRACKING.get(opta_str, opta_str)
-            try:
-                pid_val = int(tracking_id)
-            except ValueError:
-                pid_val = player_id
+        live = compute_live_player_stats(match_id, up_to_minute)
+        result = GhostEngine.analyze_match(match_id, live, game_state="Overall")
+        players = []
+        for p in result["players"]:
+            dev = p["deviation_sigma"]
+            players.append({
+                "player_id": str(p["player_id"]),
+                "name": p["player_name"],
+                "number": p["number"],
+                "team_id": p["team_id"],
+                "deviation": dev,            # en desviaciones estándar (σ)
+                "status": p["status"],
+                "overall_score": p["overall_score"],
+                "trend": "up" if dev > 0.15 else ("down" if dev < -0.15 else "stable"),
+            })
+        return {"match_minute": result["match_minute"], "game_state": result["game_state"], "players": players}
+    except Exception as e:
+        print(f"❌ Error en ghost ticker: {e}")
+        return {"error": "Error interno en ghost ticker", "players": []}
 
-            query = text("""
-                SELECT
-                    pct_goals, pct_shots, pct_xg, pct_creation, pct_progression, pct_defense
-                FROM player_ghost_profile
-                WHERE tracking_player_id = :pid AND game_state = :state
-                LIMIT 1
-            """)
-            result = conn.execute(query, {"pid": pid_val, "state": state}).fetchone()
-            if result:
-                return {
-                    "stats": [
-                        {"metric": "GOALS", "value": int((result.pct_goals or 0) * 100), "fullMark": 100},
-                        {"metric": "SHOTS", "value": int((result.pct_shots or 0) * 100), "fullMark": 100},
-                        {"metric": "xG", "value": int((result.pct_xg or 0) * 100), "fullMark": 100},
-                        {"metric": "CREA", "value": int((result.pct_creation or 0) * 100), "fullMark": 100},
-                        {"metric": "PROG", "value": int((result.pct_progression or 0) * 100), "fullMark": 100},
-                        {"metric": "DEF", "value": int((result.pct_defense or 0) * 100), "fullMark": 100}
-                    ]
-                }
-            return {"stats": None}
+
+# Métricas y etiquetas del radar (dos áreas: esperado vs real).
+_RADAR_METRICS = [
+    ("xg", "xG"), ("shots", "SHOTS"), ("progressive", "PROG"),
+    ("recoveries", "RECOV"), ("interceptions", "INT"), ("goals", "GOALS"),
+]
+
+
+@app.get("/match/{match_id}/player/{player_id}/profile")
+def get_player_profile(match_id: str, player_id: int, state: str = "Overall"):
+    """
+    Perfil Ghost del jugador: por cada métrica, lo ESPERADO (media histórica de
+    BigQuery) vs lo REAL en este partido, y su z-score (desviaciones estándar).
+    Alimenta el radar de dos áreas y la comparativa 1:1.
+    """
+    try:
+        # El frontend envía tracking_id; si llega un opta_id, lo traducimos.
+        opta_str = str(player_id)
+        tracking_id = _OPTA_TO_TRACKING.get(opta_str, opta_str)
+        try:
+            tid = int(tracking_id)
+        except ValueError:
+            tid = player_id
+
+        profile = GhostEngine.get_profile(match_id, state, tid)
+        if not profile:
+            return {"stats": None, "metrics": None}
+
+        # Stats en vivo del jugador (proyectadas p30 dentro del engine)
+        live_all = compute_live_player_stats(match_id)
+        live = next((p for p in live_all if p["player_id"] == tid), None) or {"minutes": 0}
+
+        breakdown = GhostEngine.player_breakdown(profile, live)
+
+        metrics = []
+        for key, label in _RADAR_METRICS:
+            base = profile["metrics"].get(key, {})
+            mean, std = base.get("mean"), base.get("std")
+            expected, live_p30, z, _ = GhostEngine.calculate_deviation(
+                live.get(key, 0), live.get("minutes", 0), mean, std, key
+            )
+            metrics.append({
+                "metric": label,
+                "key": key,
+                "expected": round(expected, 3),
+                "actual": round(live_p30, 3),
+                "std": round(float(std or 0.0), 3),
+                "z": round(z, 2),
+                # Normalizados 0-100 para el radar: la media (esperado) ancla en 50,
+                # lo real se desplaza ±16.6 por σ (±3σ -> 0..100).
+                "expected_norm": 50,
+                "actual_norm": max(2, min(100, round(50 + z * 16.6))),
+            })
+
+        return {
+            "player_id": tid,
+            "game_state_used": profile.get("game_state_used"),
+            "n_matches": profile.get("n_matches"),
+            "status": breakdown["status"],
+            "deviation_sigma": breakdown["deviation_sigma"],
+            "overall_score": breakdown["overall_score"],
+            "minutes": live.get("minutes", 0),
+            "metrics": metrics,
+            "match": compute_player_match_detail(match_id, tid),
+        }
     except Exception as e:
         print(f"❌ Error obteniendo perfil de jugador: {e}")
         return {"error": "Error interno al consultar el perfil"}

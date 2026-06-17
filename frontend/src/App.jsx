@@ -8,11 +8,12 @@ import FootballPitch from './components/FootballPitch';
 import PitchLayerMenu from './components/pitch/PitchLayerMenu';
 import GhostTicker from './components/GhostTicker';
 import DynamicBackground from './components/DynamicBackground';
-import PlayerGlassCard from './components/PlayerGlassCard';
+import PlayerComparisonPanel from './components/PlayerComparisonPanel';
 import TactixLogo from './components/TactixLogo';
 import MatchStatsTab from './components/matchstats/MatchStatsTab';
 import DofaTab from './components/dofa/DofaTab';
 import { useMatchHistory } from './hooks/useMatchHistory';
+import { useGhostDeviations } from './hooks/useGhostDeviations';
 import { nextPopulatedFrame } from './lib/replayBuffer';
 import { eventReplayTarget } from './lib/eventReplay';
 
@@ -489,20 +490,26 @@ function App() {
     return { homeGoals: home, awayGoals: away };
   }, [eventsList, homeTeam, awayTeam]);
 
-  // Lista de Jugadores para el Ticker (Derivada del mapa)
+  // Desviaciones Ghost REALES (z-score en σ) desde el backend
+  const ghostMap = useGhostDeviations("test_match");
+
+  // Lista de Jugadores para el Ticker (identidad/foto del mapa + desviación real del ghost)
   const tickerPlayers = useMemo(() => {
-    return Object.keys(playerMap).map((pid, i) => {
+    return Object.keys(playerMap).map((pid) => {
         const p = playerMap[pid];
+        const g = ghostMap[String(pid)];
         return {
             id: pid,
             name: p.name,
             number: p.number,
             team_id: String(p.team_id),
             team_name: teamsMap[String(p.team_id)] || 'UNKNOWN',
-            deviation: (Math.random() * 5 - 2).toFixed(1) // Placeholder dinámico
+            deviation: g ? g.deviation : null,   // σ reales (null = sin baseline aún)
+            status: g ? g.status : null,
+            score: g ? g.overall_score : null,
         };
     });
-  }, [playerMap, teamsMap]);
+  }, [playerMap, teamsMap, ghostMap]);
 
   const homeTeamId = useMemo(() => {
     if (!teamsMap || !homeTeam) return null;
@@ -620,8 +627,8 @@ return (
                     <EventFeed events={eventsList} onEventClick={handleJumpToEvent} />
                 </aside>
 
-                {/* DERECHA: CAMPO + CONTROLES */}
-                <section className="col-span-9 lg:col-span-10 relative flex flex-col p-4 overflow-hidden">
+                {/* CENTRO: CAMPO + CONTROLES (se encoge al abrir el panel de comparación) */}
+                <section className={`${selectedPlayer ? 'col-span-5 lg:col-span-7' : 'col-span-9 lg:col-span-10'} relative flex flex-col p-4 overflow-hidden transition-all duration-300`}>
                     
                     {/* Scoreboard */}
                     <div className="absolute top-4 left-0 right-0 z-30 flex justify-center w-full pointer-events-none">
@@ -636,7 +643,7 @@ return (
 
                     {/* Área del Campo */}
                     <div className="flex-1 flex items-center justify-center relative min-h-0">
-                         <div className="scale-[0.8] lg:scale-[0.9] xl:scale-100 transition-transform duration-500">
+                         <div className={`${selectedPlayer ? 'scale-[0.6] lg:scale-[0.72]' : 'scale-[0.8] lg:scale-[0.9] xl:scale-100'} transition-transform duration-500`}>
                             <FootballPitch
                                 matchState={displayData}
                                 latestEvent={latestEvent}
@@ -665,6 +672,19 @@ return (
                         />
                     </div>
                 </section>
+
+                {/* DERECHA: panel de comparación (columna en flujo: empuja el campo, no lo tapa) */}
+                {selectedPlayer && (
+                    <aside className="col-span-4 lg:col-span-3 min-h-0 flex flex-col z-20">
+                        <PlayerComparisonPanel
+                            player={selectedPlayer}
+                            homeGoals={homeGoals}
+                            awayGoals={awayGoals}
+                            homeTeamId={homeTeamId}
+                            onClose={() => setSelectedPlayer(null)}
+                        />
+                    </aside>
+                )}
             </main>
           </>
         )}
@@ -689,25 +709,6 @@ return (
           </div>
         )}
 
-        {/* LAYER 2: MODAL OVERLAY (Player Card) */}
-        {selectedPlayer && (
-            <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-                {/* Click en el fondo para cerrar */}
-                <div className="absolute inset-0" onClick={() => setSelectedPlayer(null)} />
-                
-                {/* La Tarjeta Centrada */}
-                <div className="z-10 animate-in zoom-in-95 duration-300 relative">
-                    <PlayerGlassCard 
-                        player={selectedPlayer} 
-                        homeGoals={homeGoals}
-                        awayGoals={awayGoals}
-                        homeTeamId={homeTeamId}
-                        onClose={() => setSelectedPlayer(null)} 
-                        onViewStats={() => handleViewPlayerStats(selectedPlayer)}
-                    />
-                </div>
-            </div>
-        )}
     </div>
   )
 }
