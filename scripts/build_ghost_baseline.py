@@ -70,10 +70,16 @@ WITH
         event_key,
         IF(type_id = 16, 1, 0) AS is_goal,
         ROUND(SQRT(POW(100 - location_x, 2) + POW(50 - location_y, 2)), 2) AS distance_to_goal,
-        ROUND(ACOS(SAFE_DIVIDE(((100 - location_x) * (100 - location_x) + (46 - location_y) * (54 - location_y)),
-              (SQRT(POW(100 - location_x, 2) + POW(46 - location_y, 2)) * SQRT(POW(100 - location_x, 2) + POW(54 - location_y, 2))))) * 180 / ACOS(-1), 2) AS angle_visible,
-        CASE WHEN body_head THEN 'Head' WHEN body_right_foot OR body_left_foot THEN 'Foot' ELSE 'Other' END AS body_part,
-        CASE WHEN is_penalty THEN 'Penalty' WHEN is_from_corner THEN 'From Corner' WHEN is_fast_break THEN 'Fast Break' ELSE 'Regular Play' END AS play_pattern
+        ROUND(ACOS(SAFE_DIVIDE(
+              ((100 - location_x) * (100 - location_x) + (46 - location_y) * (54 - location_y)),
+              (SQRT(POW(100 - location_x, 2) + POW(46 - location_y, 2))
+               * SQRT(POW(100 - location_x, 2) + POW(54 - location_y, 2)))
+            )) * 180 / ACOS(-1), 2) AS angle_visible,
+        CASE WHEN body_head THEN 'Head'
+             WHEN body_right_foot OR body_left_foot THEN 'Foot' ELSE 'Other' END AS body_part,
+        CASE WHEN is_penalty THEN 'Penalty'
+             WHEN is_from_corner THEN 'From Corner'
+             WHEN is_fast_break THEN 'Fast Break' ELSE 'Regular Play' END AS play_pattern
       FROM base
       WHERE type_id IN (13, 14, 15, 16)
     )), UNNEST(predicted_is_goal_probs) prob
@@ -260,14 +266,16 @@ def main():
         qa = [r for r in rows if args.player.lower() in (r.get("player_name") or "").lower()]
     print("\n--- QA (game_state=Overall) ---")
     print(f"{'player':<22}{'n':>3} | {'xg':>14} {'shots':>14} {'key_p':>14} {'recov':>14}")
+
+    def fmt(r, metric):
+        mean, std = r.get(f"{metric}_mean"), r.get(f"{metric}_std")
+        return f"{(mean or 0):.2f}±{(std or 0):.2f}"
+
     for r in sorted(qa, key=lambda x: x.get("player_name") or ""):
         if (r["game_state"] or "Overall") != "Overall":
             continue
-        def fmt(m):
-            mean, std = r.get(f"{m}_mean"), r.get(f"{m}_std")
-            return f"{(mean or 0):.2f}±{(std or 0):.2f}"
         print(f"{(r.get('player_name') or '')[:21]:<22}{r['n_matches']:>3} | "
-              f"{fmt('xg'):>14} {fmt('shots'):>14} {fmt('key_passes'):>14} {fmt('recoveries'):>14}")
+              f"{fmt(r, 'xg'):>14} {fmt(r, 'shots'):>14} {fmt(r, 'key_passes'):>14} {fmt(r, 'recoveries'):>14}")
     return 0
 
 

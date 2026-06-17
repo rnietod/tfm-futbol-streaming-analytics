@@ -343,11 +343,13 @@ def compute_player_match_detail(match_id: str, tracking_id: int):
                 SUM(CASE WHEN event_type_id = 30 THEN 1 ELSE 0 END) AS passes,
                 SUM(CASE WHEN event_type_id = 30 AND outcome_id IS NULL THEN 1 ELSE 0 END) AS passes_completed,
                 SUM(CASE WHEN event_type_id = 16 THEN 1 ELSE 0 END) AS shots,
-                SUM(CASE WHEN event_type_id = 16 AND (type_id = 88 OR outcome_id = 97) THEN 1 ELSE 0 END) AS shots_on_target,
+                SUM(CASE WHEN event_type_id = 16 AND (type_id = 88 OR outcome_id = 97)
+                         THEN 1 ELSE 0 END) AS shots_on_target,
                 SUM(CASE WHEN event_type_id = 16 AND outcome_id = 97 THEN 1 ELSE 0 END) AS goals,
                 SUM(CASE WHEN event_type_id = 30 AND type_name = 'Cross' THEN 1 ELSE 0 END) AS crosses,
                 SUM(CASE WHEN event_type_id = 30 AND pass_length > 32 THEN 1 ELSE 0 END) AS long_passes,
-                SUM(CASE WHEN event_type_id = 30 AND pass_length IS NOT NULL AND pass_length <= 18 THEN 1 ELSE 0 END) AS short_passes,
+                SUM(CASE WHEN event_type_id = 30 AND pass_length IS NOT NULL
+                         AND pass_length <= 18 THEN 1 ELSE 0 END) AS short_passes,
                 SUM(CASE WHEN event_type_id = 2 THEN 1 ELSE 0 END) AS recoveries,
                 SUM(CASE WHEN event_type_id = 10 THEN 1 ELSE 0 END) AS interceptions
             FROM match_events
