@@ -46,9 +46,9 @@ const GhostTicker = ({ players, onPlayerClick, homeTeam, awayTeam, homeTeamId })
       {/* SECCIÓN IZQUIERDA: CONTROLES DE EQUIPO */}
       <div className="absolute left-0 h-full px-4 bg-zinc-950/90 z-20 flex items-center gap-4 border-r border-white/10 shadow-[5px_0_30px_rgba(0,0,0,0.8)]">
         <div className="flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-cyber-neon animate-pulse" />
+            <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
             <span className="text-[10px] font-bold tracking-[0.2em] text-zinc-400 hidden md:block">
-            GHOST<span className="text-cyber-neon">AI</span>
+            GHOST<span className="text-primary">AI</span>
             </span>
         </div>
 
@@ -70,7 +70,7 @@ const GhostTicker = ({ players, onPlayerClick, homeTeam, awayTeam, homeTeamId })
       
       {/* MARQUEE ANIMADO (CSS PURO) */}
       <div 
-        className="flex w-full items-center pl-60 mask-linear-fade"
+        className="flex w-full items-center pl-60 [mask-image:linear-gradient(to_right,transparent,black_8%,black_92%,transparent)]"
         onMouseEnter={() => setIsPaused(true)}
         onMouseLeave={() => setIsPaused(false)}
       >

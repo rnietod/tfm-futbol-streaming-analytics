@@ -44,9 +44,9 @@ const FootballPitch = ({ matchState, latestEvent, playerMap = {}, width = 1100, 
 
   if (!matchState || !matchState.player_data) {
     return (
-      <div style={{ width, height }} className="flex items-center justify-center border border-cyber-neon/30 rounded-lg bg-black/60 backdrop-blur-sm relative overflow-hidden">
+      <div style={{ width, height }} className="flex items-center justify-center border border-primary/30 rounded-lg bg-black/60 backdrop-blur-sm relative overflow-hidden">
         <div className="absolute inset-0 bg-[url('/custom-pitch.jpg')] bg-cover bg-center opacity-30 blur-sm"></div>
-        <p className="text-cyber-neon font-mono animate-pulse tracking-[0.3em] relative z-10 font-bold">
+        <p className="text-primary font-mono animate-pulse tracking-[0.3em] relative z-10 font-bold">
           ESTABLECIENDO ENLACE SATELITAL...
         </p>
       </div>
@@ -121,8 +121,8 @@ const FootballPitch = ({ matchState, latestEvent, playerMap = {}, width = 1100, 
           style={{ ...optaToPixels(latestEvent.raw_x, latestEvent.raw_y), transform: 'translate(-50%, -50%)' }}
         >
           <span className="flex h-20 w-20 relative">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyber-neon opacity-50"></span>
-            <span className="relative inline-flex rounded-full h-20 w-20 border-4 border-cyber-neon opacity-80 shadow-neon"></span>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-50"></span>
+            <span className="relative inline-flex rounded-full h-20 w-20 border-4 border-primary opacity-80 shadow-[0_0_15px_rgba(0,111,238,0.6)]"></span>
           </span>
         </div>
       )}
