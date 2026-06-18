@@ -31,6 +31,18 @@ except Exception as e:
 
 _TRACKING_TO_OPTA = {v: k for k, v in _OPTA_TO_TRACKING.items()}  # tracking_player_id -> opta_player_id
 
+
+# --- Normalización de coordenadas StatsBomb (0-120 x 0-80) -> 0-100 x 0-100 ---
+# Centralizado para no repetir los factores 1.2 / 0.8 en cada endpoint.
+def _sb_x_to_100(v):
+    """x de StatsBomb (0-120) a escala 0-100."""
+    return None if v is None else round(float(v) / 1.2, 1)
+
+
+def _sb_y_to_100(v):
+    """y de StatsBomb (0-80) a escala 0-100."""
+    return None if v is None else round(float(v) / 0.8, 1)
+
 # --- Process Manager Registry ---
 process_registry = {}
 
@@ -215,9 +227,10 @@ def get_match_metadata(match_id: str):
     try:
         engine = get_db_engine()
         with engine.connect() as conn:
-            # 0. Info del partido (nombres de equipo)
+            # 0. Info del partido (nombres + IDs de equipo)
             match_row = conn.execute(text(
-                "SELECT home_team_name, away_team_name FROM matches WHERE match_id = :mid"
+                "SELECT home_team_id, home_team_name, away_team_id, away_team_name "
+                "FROM matches WHERE match_id = :mid"
             ), {"mid": match_id}).fetchone()
 
             # 1. Consulta SQL Directa
@@ -249,9 +262,16 @@ def get_match_metadata(match_id: str):
             home_name = match_row.home_team_name if match_row else "HOME"
             away_name = match_row.away_team_name if match_row else "AWAY"
 
+            # Preferimos los IDs reales de la tabla `matches` (poblados por
+            # worker_persist desde el matchInfo). Solo si faltan caemos al
+            # heurístico frágil de ordenar IDs (mayor = local).
             teams = {}
-            if len(team_ids_sorted) >= 2:
-                # El equipo local (ej. Real Madrid) en este dataset resulta tener el ID mayor
+            home_id = match_row.home_team_id if match_row else None
+            away_id = match_row.away_team_id if match_row else None
+            if home_id is not None and away_id is not None:
+                teams[str(home_id)] = home_name
+                teams[str(away_id)] = away_name
+            elif len(team_ids_sorted) >= 2:
                 teams[str(team_ids_sorted[1])] = home_name
                 teams[str(team_ids_sorted[0])] = away_name
             elif len(team_ids_sorted) == 1:
@@ -997,8 +1017,8 @@ def get_match_stats(match_id: str):
                         "player_id": ar.player_id,
                         "name": ar.name,
                         "number": find_dorsal(ar.name),
-                        "x": round(float(ar.avg_x) / 1.2, 1),
-                        "y": round(float(ar.avg_y) / 0.8, 1)
+                        "x": _sb_x_to_100(ar.avg_x),
+                        "y": _sb_y_to_100(ar.avg_y)
                     })
 
             # Fetch roster info from match_players
@@ -1406,8 +1426,8 @@ def get_player_pitch_data(match_id: str, player_id: str):
             """), {"mid": match_id, "pid": event_pid}).fetchall()
 
             heatmap = [{
-                "x": round(float(r.location_x) / 1.2, 1),
-                "y": round(float(r.location_y) / 0.8, 1),
+                "x": _sb_x_to_100(r.location_x),
+                "y": _sb_y_to_100(r.location_y),
                 "intensity": 0.7 if r.event_type_id in (16, 14, 30) else 0.4,
             } for r in heat_rows]
 
@@ -1420,10 +1440,10 @@ def get_player_pitch_data(match_id: str, player_id: str):
             """), {"mid": match_id, "pid": event_pid}).fetchall()
 
             pass_network = [{
-                "from_x": round(float(r.location_x) / 1.2, 1),
-                "from_y": round(float(r.location_y) / 0.8, 1),
-                "to_x": round(float(r.end_location_x) / 1.2, 1),
-                "to_y": round(float(r.end_location_y) / 0.8, 1),
+                "from_x": _sb_x_to_100(r.location_x),
+                "from_y": _sb_y_to_100(r.location_y),
+                "to_x": _sb_x_to_100(r.end_location_x),
+                "to_y": _sb_y_to_100(r.end_location_y),
                 "count": 1,
                 "successful": r.outcome_id is None,
             } for r in pass_rows]
@@ -1442,8 +1462,8 @@ def get_player_pitch_data(match_id: str, player_id: str):
             }
 
             touch_map = [{
-                "x": round(float(r.location_x) / 1.2, 1),
-                "y": round(float(r.location_y) / 0.8, 1),
+                "x": _sb_x_to_100(r.location_x),
+                "y": _sb_y_to_100(r.location_y),
                 "eventType": type_map.get(r.event_type_id, "reception"),
             } for r in touch_rows]
 

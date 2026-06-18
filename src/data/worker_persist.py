@@ -310,8 +310,8 @@ class PersistenceWorker:
                         team_name, player_id, player_name,
                         location_x, location_y, 
                         end_location_x, end_location_y, end_location_z,
-                        pass_length, pass_angle, pass_recipient_name, 
-                        pass_height_name, body_part_name
+                        pass_length, pass_angle, pass_recipient_name,
+                        pass_height_name, body_part_name, xg
                     )
                     VALUES (
                         :uuid, :idx, :mid, :ts, :per, :min, :sec,
@@ -320,8 +320,8 @@ class PersistenceWorker:
                         :team, :pid, :pname,
                         :x, :y, 
                         :end_x, :end_y, :end_z,
-                        :p_len, :p_ang, :p_rec, 
-                        :p_height, :body
+                        :p_len, :p_ang, :p_rec,
+                        :p_height, :body, :xg
                     )
                     ON CONFLICT (event_uuid) DO NOTHING
                 """), {
@@ -358,7 +358,8 @@ class PersistenceWorker:
                     "p_ang": ev.get('pass_angle'),
                     "p_rec": ev.get('pass_recipient_name'),
                     "p_height": ev.get('pass_height_name'),
-                    "body": ev.get('body_part_name')
+                    "body": ev.get('body_part_name'),
+                    "xg": ev.get('xg'),
                 })
             
             # Log más detallado para debug

@@ -171,7 +171,7 @@ class SimulationEngine:
                     "pass_recipient_name", "pass_length", "pass_angle",
                     "pass_height_name", "pass_cross", "pass_cut_back",
                     "pass_switch", "body_part_name", "outcome_id", "outcome_name",
-                    "type_id", "type_name"
+                    "type_id", "type_name", "xg"
                 ]
 
                 # 1. Validar existencia (Fail Fast si faltan las críticas)
@@ -183,6 +183,11 @@ class SimulationEngine:
                 # 2. Calcular tiempo para el motor (game_time)
                 e_df['game_time'] = e_df['timestamp'].apply(self._time_to_seconds)
                 e_df = e_df.dropna(subset=['game_time'])
+
+                # xG: la fuente trae 'statsbomb_xg'; lo exponemos como 'xg' en el
+                # evento para que worker_persist lo guarde en match_events.
+                if 'statsbomb_xg' in e_df.columns:
+                    e_df['xg'] = e_df['statsbomb_xg']
 
                 # 3. Filtrar y rellenar columnas faltantes (para no romper si falta una opcional)
                 # Si una columna opcional (ej: pass_cross) no viene, la creamos con None
