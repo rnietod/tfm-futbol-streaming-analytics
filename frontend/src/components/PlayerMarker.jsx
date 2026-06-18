@@ -1,9 +1,8 @@
 import React from 'react';
 
 const PlayerMarker = ({ number, team, x, y, isGK, onClick }) => {
-  // Configuración de Colores Tácticos (Cyberpunk Neon)
-  // Home: Rojo Neón | Away: Cyan Neón | GK: Amarillo
-  const baseColor = isGK ? '#fbbf24' : (team === 'home' ? '#ff2a6d' : '#00f2ff');
+  // Colores design-system (igual que Match Stats): Local azul, Visitante rojo, GK ámbar.
+  const baseColor = isGK ? '#fbbf24' : (team === 'home' ? '#006FEE' : '#f31260');
   
   return (
     <div

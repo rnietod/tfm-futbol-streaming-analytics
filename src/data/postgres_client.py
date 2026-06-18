@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import threading
 import sqlalchemy
 from sqlalchemy import text
 
@@ -11,13 +12,24 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CONFIG_PATH = os.path.join(BASE_DIR, 'configs/dev.json')
 
-def get_db_engine():
+# ──────────────────────────────────────────────────────────────────────────────
+# Engine singleton
+# ──────────────────────────────────────────────────────────────────────────────
+# Antes se llamaba a create_engine() en CADA request, descartando el engine al
+# terminar -> se abría una conexión TCP+auth nueva contra Postgres cada vez
+# (principal causa de la lentitud del replay). Ahora el engine (y su pool) se
+# crea UNA sola vez por proceso y se reutiliza en todas las peticiones.
+_ENGINE = None
+_ENGINE_LOCK = threading.Lock()
+
+
+def _build_engine():
     if not os.path.exists(CONFIG_PATH):
         raise FileNotFoundError(f"Config no encontrado: {CONFIG_PATH}")
-        
+
     with open(CONFIG_PATH, 'r') as f:
         config = json.load(f)
-    
+
     # Leemos la config local
     db_conf = config.get('cloudsql', {})
     user = os.getenv('DB_USER', db_conf.get('db_user', 'postgres'))
@@ -28,13 +40,34 @@ def get_db_engine():
 
     # URL Estándar de PostgreSQL (sin drivers de Google)
     db_url = f"postgresql+pg8000://{user}:{password}@{host}:{port}/{dbname}"
-    
-    try:
-        engine = sqlalchemy.create_engine(db_url, pool_pre_ping=True)
-        return engine
-    except Exception as e:
-        logger.error(f"❌ Error creando engine: {e}")
-        raise e
+
+    # pool_pre_ping  : descarta conexiones muertas antes de usarlas.
+    # pool_recycle   : recicla conexiones de larga vida (evita timeouts del server).
+    # pool_size/overflow: pool persistente reutilizado entre requests.
+    return sqlalchemy.create_engine(
+        db_url,
+        pool_pre_ping=True,
+        pool_size=5,
+        max_overflow=10,
+        pool_recycle=1800,
+    )
+
+
+def get_db_engine():
+    """Devuelve el engine SQLAlchemy compartido (singleton, thread-safe)."""
+    global _ENGINE
+    if _ENGINE is None:
+        with _ENGINE_LOCK:
+            # Doble chequeo bajo lock: si otro hilo lo creó mientras esperábamos,
+            # no lo recreamos.
+            if _ENGINE is None:
+                try:
+                    _ENGINE = _build_engine()
+                except Exception as e:
+                    logger.error(f"❌ Error creando engine: {e}")
+                    raise e
+    return _ENGINE
+
 
 def test_connection():
     try:
