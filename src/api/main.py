@@ -62,6 +62,7 @@ def _match_by_last_name(full_name, name_map):
                 return val
     return None
 
+
 # --- Process Manager Registry ---
 process_registry = {}
 
