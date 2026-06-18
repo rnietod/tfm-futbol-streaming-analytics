@@ -58,10 +58,18 @@ SERVICES_CONFIG = {
 
 app = FastAPI()
 
-# ConfiguraciÃ³n CORS para que el Frontend (puerto 5173) pueda hablar con el Backend (puerto 8000)
+# Configuración CORS para que el Frontend pueda hablar con el Backend.
+# "*" + allow_credentials=True es inválido por spec (el navegador no envía el
+# comodín con credenciales). Usamos orígenes explícitos, configurables por env
+# CORS_ORIGINS (lista separada por comas); por defecto, los de dev local.
+_DEFAULT_CORS_ORIGINS = "http://127.0.0.1:5173,http://localhost:5173"
+_CORS_ORIGINS = [
+    o.strip() for o in os.getenv("CORS_ORIGINS", _DEFAULT_CORS_ORIGINS).split(",")
+    if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
