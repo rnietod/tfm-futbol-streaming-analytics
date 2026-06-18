@@ -1,9 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { TrendingUp, TrendingDown, Minus, Users, Shield } from 'lucide-react';
+import PlayerAvatar from './PlayerAvatar';
+import PlayerHoverCard from './PlayerHoverCard';
 
 const GhostTicker = ({ players, onPlayerClick, homeTeam, awayTeam, homeTeamId }) => {
   const [filter, setFilter] = useState('all'); // 'all', 'home', 'away'
   const [isPaused, setIsPaused] = useState(false);
+  const [hover, setHover] = useState(null); // { x, y, player } para la mini-pestaña (posición fija)
 
   // 1. Filtrado de jugadores
   const filteredPlayers = useMemo(() => {
@@ -83,15 +86,22 @@ const GhostTicker = ({ players, onPlayerClick, homeTeam, awayTeam, homeTeamId })
           }}
         >
           {marqueeList.map((player, idx) => {
-             const deviation = player.deviation !== undefined ? player.deviation : 0;
-             const isPositive = deviation > 0;
+             const deviation = (player.deviation === null || player.deviation === undefined)
+               ? null : Number(player.deviation);
+             const isPositive = (deviation ?? 0) > 0;
 
              return (
-              <div 
-                key={`${player.id}-${idx}`} 
+              <div
+                key={`${player.id}-${idx}`}
                 onClick={() => onPlayerClick && onPlayerClick(player)}
+                onMouseEnter={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect();
+                    setHover({ x: r.left, y: r.bottom, player });
+                }}
+                onMouseLeave={() => setHover(null)}
                 className="flex items-center gap-3 group cursor-pointer select-none hover:opacity-100 opacity-80 transition-opacity"
               >
+                <PlayerAvatar trackingId={player.id} name={player.name} size={26} />
                 <div className="flex flex-col items-end leading-none">
                     <span className="text-[9px] font-mono text-zinc-600">#{player.number || '00'}</span>
                     <span className="text-xs font-bold text-zinc-400 group-hover:text-white transition-colors">
@@ -100,10 +110,16 @@ const GhostTicker = ({ players, onPlayerClick, homeTeam, awayTeam, homeTeamId })
                 </div>
                 
                 <div className={`flex items-center gap-1.5 px-2 py-1 rounded bg-black/40 border border-white/5 group-hover:border-white/20 transition-colors`}>
-                    {getTrendIcon(deviation)}
-                    <span className={`text-[10px] font-mono font-bold ${isPositive ? 'text-success' : 'text-danger'}`}>
-                        {deviation > 0 ? '+' : ''}{deviation}%
-                    </span>
+                    {deviation === null ? (
+                        <span className="text-[10px] font-mono text-zinc-600">—</span>
+                    ) : (
+                        <>
+                            {getTrendIcon(deviation)}
+                            <span className={`text-[10px] font-mono font-bold ${isPositive ? 'text-success' : 'text-danger'}`}>
+                                {deviation > 0 ? '+' : ''}{deviation.toFixed(2)}σ
+                            </span>
+                        </>
+                    )}
                 </div>
                 
                 <div className="w-1 h-1 rounded-full bg-zinc-800 ml-6 opacity-50" />
@@ -114,6 +130,9 @@ const GhostTicker = ({ players, onPlayerClick, homeTeam, awayTeam, homeTeamId })
       </div>
 
       <div className="absolute right-0 top-0 h-full w-32 bg-gradient-to-l from-zinc-950 to-transparent pointer-events-none z-10" />
+
+      {/* Mini-pestaña al pasar el ratón: foto + z-score + radar (posición fija). */}
+      {hover && <PlayerHoverCard player={hover.player} x={hover.x} y={hover.y} />}
     </div>
   );
 };

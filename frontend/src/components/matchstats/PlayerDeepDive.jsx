@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Loader2, Zap } from 'lucide-react';
 import PlayerPitchAnalytics from './PlayerPitchAnalytics';
 import { SpeedSparkline } from './PhysicalMetricsViz';
+import PlayerAvatar from '../PlayerAvatar';
 import {
   usePlayerTrackingHeatmap,
   usePlayerTrackingDetail,
@@ -110,15 +111,14 @@ const PlayerHeaderCard = ({ player, teamShort, teamColor, physRow }) => {
     <div className="bg-zinc-900/60 backdrop-blur-sm rounded-xl border border-white/5 px-4 py-2.5 flex-shrink-0 flex items-center justify-between gap-4">
       {/* Identity */}
       <div className="flex items-center gap-3 min-w-0">
-        <div
-          className="w-11 h-11 rounded-lg flex items-center justify-center text-lg font-black flex-shrink-0"
-          style={{
-            backgroundColor: `color-mix(in srgb, ${teamColor} 15%, transparent)`,
-            border: `1px solid color-mix(in srgb, ${teamColor} 35%, transparent)`,
-            color: teamColor,
-          }}
-        >
-          {info.number || '–'}
+        <div className="relative flex-shrink-0">
+          <PlayerAvatar trackingId={info.id} name={info.name} size={44} ring={teamColor} />
+          <span
+            className="absolute -bottom-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[9px] font-black text-white shadow"
+            style={{ backgroundColor: teamColor }}
+          >
+            {info.number || '–'}
+          </span>
         </div>
         <div className="min-w-0">
           <h3 className="text-base font-bold text-white leading-tight truncate">{info.name}</h3>

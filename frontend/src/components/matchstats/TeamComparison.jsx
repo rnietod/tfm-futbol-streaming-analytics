@@ -4,6 +4,7 @@ import { Network, Target, Thermometer, X, Award, Navigation, Shield, Flame } fro
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts';
 import PassingNetworkPitch from './PassingNetworkPitch';
 import ShotMapViz from './ShotMapViz';
+import PlayerAvatar from '../PlayerAvatar';
 import MomentumChart from './MomentumChart';
 import AccuratePassesViz from './AccuratePassesViz';
 import PhysicalMetricsViz from './PhysicalMetricsViz';
@@ -314,9 +315,6 @@ const AnimatePlayerCard = ({ playerId, players, teamA, teamB, statsData, loading
     ? Math.round((player.stats.duelsWon / player.stats.tackles) * 100) 
     : 0;
 
-  // Render dicebear avatar with seed of player name
-  const avatarUrl = `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(pName)}`;
-
   // Compute Overall rating (OVR) for the center of the radar
   const averageOvr = statsData 
     ? Math.round(statsData.reduce((acc, curr) => acc + curr.value, 0) / statsData.length)
@@ -337,11 +335,11 @@ const AnimatePlayerCard = ({ playerId, players, teamA, teamB, statsData, loading
         <div className="flex items-center gap-3">
           {/* Avatar */}
           <div className="relative">
-            <div 
+            <div
               className="w-12 h-12 rounded-xl overflow-hidden border flex items-center justify-center bg-zinc-900/80 shadow-md"
               style={{ borderColor: `${playerTeamColor}44` }}
             >
-              <img src={avatarUrl} alt={pName} className="w-10 h-10 object-contain" />
+              <PlayerAvatar trackingId={playerId} name={pName} size={44} />
             </div>
             <span 
               className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-black text-white shadow"

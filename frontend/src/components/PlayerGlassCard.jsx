@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardBody, CardFooter, Avatar, Button, Chip } from "@nextui-org/react";
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts';
 import { X, TrendingUp, Shield } from 'lucide-react';
+import PlayerAvatar from './PlayerAvatar';
 
 // MOCK DATA (Estático por ahora, listo para recibir props reales luego)
 const MOCK_STATS = [
@@ -79,9 +80,12 @@ const PlayerGlassCard = ({ player, homeGoals, awayGoals, homeTeamId, onClose, on
                     {/* Anillo de energía rotando sutilmente */}
                     <div className="absolute inset-0 rounded-full border border-dashed border-primary/30 w-24 h-24 -m-2 animate-[spin_10s_linear_infinite]" />
                     
-                    <Avatar 
-                        src="https://i.pravatar.cc/150?u=a042581f4e29026704d" // Placeholder
-                        className="w-20 h-20 text-large border-2 border-primary shadow-[0_0_20px_rgba(0,111,238,0.4)]"
+                    <PlayerAvatar
+                        trackingId={player.id ?? player.player_id}
+                        name={player.name}
+                        size={80}
+                        ring={player.team_id === homeTeamId ? '#006FEE' : '#f31260'}
+                        className="shadow-[0_0_20px_rgba(0,111,238,0.4)]"
                     />
                     
                     <div className="mt-4 text-center">
