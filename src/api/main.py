@@ -43,6 +43,25 @@ def _sb_y_to_100(v):
     """y de StatsBomb (0-80) a escala 0-100."""
     return None if v is None else round(float(v) / 0.8, 1)
 
+
+def _match_by_last_name(full_name, name_map):
+    """Casa un nombre completo (StatsBomb) con un mapa {nombre_lower: valor}.
+    Primero por coincidencia exacta y, si falla, por apellido (última palabra de
+    >=3 chars contenida en una clave). Devuelve el valor o None. Centraliza la
+    lógica que estaba triplicada en los endpoints de stats."""
+    if not full_name:
+        return None
+    fn_lower = full_name.lower()
+    if fn_lower in name_map:
+        return name_map[fn_lower]
+    for last in reversed(fn_lower.split()):
+        if len(last) < 3:
+            continue
+        for key, val in name_map.items():
+            if last in key or key.endswith(last):
+                return val
+    return None
+
 # --- Process Manager Registry ---
 process_registry = {}
 
@@ -984,22 +1003,7 @@ def get_match_stats(match_id: str):
                 pass
 
             def find_dorsal(full_name):
-                """Try to match a full StatsBomb name to a match_players short name via last name."""
-                if not full_name:
-                    return None
-                fn_lower = full_name.lower()
-                # Direct match
-                if fn_lower in dorsal_map:
-                    return dorsal_map[fn_lower]
-                # Last-name match: extract last word of full name and check if any key contains it
-                parts = fn_lower.split()
-                for last in reversed(parts):
-                    if len(last) < 3:
-                        continue
-                    for key, dorsal in dorsal_map.items():
-                        if last in key or key.endswith(last):
-                            return dorsal
-                return None
+                return _match_by_last_name(full_name, dorsal_map)
 
             for pr in pass_network_rows:
                 if pr.team_name in teams_data:
@@ -1159,19 +1163,7 @@ def get_match_stats(match_id: str):
                 pass
 
             def find_player_id(full_name):
-                if not full_name:
-                    return None
-                fn_lower = full_name.lower()
-                if fn_lower in player_id_map:
-                    return player_id_map[fn_lower]
-                parts = fn_lower.split()
-                for last in reversed(parts):
-                    if len(last) < 3:
-                        continue
-                    for key, pid in player_id_map.items():
-                        if last in key or key.endswith(last):
-                            return pid
-                return None
+                return _match_by_last_name(full_name, player_id_map)
 
             player_rows = conn.execute(text("""
                 SELECT
@@ -1189,6 +1181,7 @@ def get_match_stats(match_id: str):
                     SUM(CASE WHEN event_type_id = 4 AND outcome_name = 'Won' THEN 1 ELSE 0 END) AS duels_won,
                     SUM(CASE WHEN event_type_id = 10 THEN 1 ELSE 0 END) AS interceptions,
                     SUM(CASE WHEN event_type_id IN (30, 42, 43, 16, 14, 38, 6) THEN 1 ELSE 0 END) AS touches,
+                    SUM(CASE WHEN event_type_id = 16 THEN COALESCE(xg, 0) ELSE 0 END) AS xg,
                     MAX(minute) AS last_minute
                 FROM match_events e
                 WHERE e.match_id = :mid AND e.player_name IS NOT NULL
@@ -1200,7 +1193,8 @@ def get_match_stats(match_id: str):
                 dn = r.player_name or "Unknown"
                 pid = find_player_id(dn)
                 if not pid:
-                    pid = str(hash(dn))
+                    # id estable (hash() es no determinista entre procesos por PYTHONHASHSEED)
+                    pid = "unmatched_" + dn.lower().replace(" ", "_")
                 # Translate opta -> tracking to find roster info
                 tracking_id = _OPTA_TO_TRACKING.get(pid, pid)
                 ro = roster_by_tracking.get(tracking_id, {})
@@ -1217,7 +1211,7 @@ def get_match_stats(match_id: str):
                     "stats": {
                         "minutesPlayed": int(r.last_minute or 0), "goals": int(r.goals or 0),
                         "assists": 0, "shots": int(r.shots or 0),
-                        "shotsOnTarget": int(r.shots_on_target or 0), "xG": 0,
+                        "shotsOnTarget": int(r.shots_on_target or 0), "xG": round(float(r.xg or 0), 2),
                         "passesCompleted": pc, "passAccuracy": pacc, "keyPasses": 0,
                         "progressivePasses": int(r.progressive_passes or 0),
                         "tackles": int(r.duels or 0), "interceptions": int(r.interceptions or 0),
@@ -1268,19 +1262,7 @@ def get_match_shots(match_id: str):
                 pass
 
             def find_player_id(full_name):
-                if not full_name:
-                    return None
-                fn_lower = full_name.lower()
-                if fn_lower in player_id_map:
-                    return player_id_map[fn_lower]
-                parts = fn_lower.split()
-                for last in reversed(parts):
-                    if len(last) < 3:
-                        continue
-                    for key, pid in player_id_map.items():
-                        if last in key or key.endswith(last):
-                            return pid
-                return None
+                return _match_by_last_name(full_name, player_id_map)
 
             # 2. Obtener todos los tiros (event_type_id = 16)
             shot_rows = conn.execute(text("""
