@@ -23,22 +23,26 @@ class BigQueryClient:
         self._init_client()
 
     def _load_config(self):
-        """Carga la configuración del proyecto desde .df-credentials.json"""
-        if not os.path.exists(CREDENTIALS_PATH):
-            raise FileNotFoundError(f"Archivo de credenciales no encontrado: {CREDENTIALS_PATH}")
-        
-        try:
-            with open(CREDENTIALS_PATH, 'r') as f:
-                config = json.load(f)
-                self._project_id = config.get('projectId')
-                self._location = config.get('location')
-                
-            if not self._project_id:
-                raise ValueError("projectId no encontrado en .df-credentials.json")
-                
-        except Exception as e:
-            logger.error(f"Error cargando configuración de BigQuery: {e}")
-            raise
+        """Carga projectId/location desde env (BQ_PROJECT_ID/BQ_LOCATION) o, como
+        fallback para dev local, desde .df-credentials.json. La autenticación
+        sigue siendo por ADC (gcloud auth / GOOGLE_APPLICATION_CREDENTIALS)."""
+        self._project_id = os.getenv("BQ_PROJECT_ID")
+        self._location = os.getenv("BQ_LOCATION")
+
+        if not self._project_id and os.path.exists(CREDENTIALS_PATH):
+            try:
+                with open(CREDENTIALS_PATH, 'r') as f:
+                    config = json.load(f)
+                self._project_id = self._project_id or config.get('projectId')
+                self._location = self._location or config.get('location')
+            except Exception as e:
+                logger.error(f"Error cargando configuración de BigQuery: {e}")
+                raise
+
+        if not self._project_id:
+            raise ValueError(
+                "Falta projectId: define BQ_PROJECT_ID (env) o crea .df-credentials.json"
+            )
 
     def _init_client(self):
         """Inicializa el cliente de BigQuery usando ADC"""
